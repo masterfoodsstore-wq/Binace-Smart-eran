@@ -1,0 +1,6 @@
+{
+  "name": "Binace Smart Earn",
+  "description": "Simulated fintech rewards wallet, daily task tracker, referral commission program, and admin management app.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

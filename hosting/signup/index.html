@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign Up — Binace Smart Earn</title>
+  <style>
+    :root {
+      --bg: #070b09;
+      --card: #0e1612;
+      --surface: #132019;
+      --border: #1e3328;
+      --green: #00d084;
+      --text: #f3f7f5;
+      --muted: #9eb5aa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at top, #0c261a 0%, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 520px;
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 28px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(0, 208, 132, 0.14);
+      color: var(--green);
+      border: 1px solid rgba(0, 208, 132, 0.4);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    h1 { font-size: 26px; margin-bottom: 8px; }
+    p { color: var(--muted); line-height: 1.55; margin-bottom: 18px; }
+    .ref-box {
+      background: var(--surface);
+      border: 1px solid rgba(0, 208, 132, 0.45);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .ref-code { font-size: 20px; font-weight: 800; color: var(--green); letter-spacing: 1px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 14px 18px;
+      border-radius: 14px;
+      border: none;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    .btn-primary { background: var(--green); color: #04140c; }
+    .btn-outline { border: 1px solid var(--border); color: var(--text); background: transparent; }
+    .hint { font-size: 13px; color: var(--muted); text-align: center; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <span class="badge">BINACE SMART EARN • INVITE SIGNUP</span>
+    <h1>Complete Your Signup</h1>
+    <p id="subtitle">Open the Binace Smart Earn Android app to sign up with Google and automatically link your referral code.</p>
+
+    <div class="ref-box" id="refBox" style="display:none;">
+      <div>
+        <div style="font-size:12px;color:#9eb5aa;">Captured Referral Code</div>
+        <div class="ref-code" id="refCodeText"></div>
+      </div>
+      <button class="btn-outline" style="width:auto;padding:8px 14px;border-radius:10px;" onclick="copyRef()">Copy</button>
+    </div>
+
+    <a class="btn btn-primary" id="openAppBtn" href="binacesmartearn://signup">Open in Binace Smart Earn App</a>
+    <a class="btn btn-outline" href="/">Back to Official Website</a>
+    <p class="hint" id="deviceHint"></p>
+  </main>
+
+  <script>
+    var params = new URLSearchParams(window.location.search);
+    var rawRef = params.get("ref") || params.get("referral") || params.get("code") || "";
+    var cleanRef = rawRef.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+    var deepLink = cleanRef ? ("binacesmartearn://signup?ref=" + encodeURIComponent(cleanRef)) : "binacesmartearn://signup";
+
+    document.getElementById("openAppBtn").setAttribute("href", deepLink);
+
+    if (cleanRef) {
+      try { localStorage.setItem("bse_pending_ref", cleanRef); } catch (e) {}
+      document.getElementById("refBox").style.display = "flex";
+      document.getElementById("refCodeText").textContent = cleanRef;
+      if (/Android/i.test(navigator.userAgent)) {
+        document.getElementById("deviceHint").textContent = "Android detected — redirecting to Binace Smart Earn...";
+        setTimeout(function () { window.location.href = deepLink; }, 350);
+      } else {
+        document.getElementById("deviceHint").textContent = "On desktop? Copy your referral code (" + cleanRef + ") or open this link on your Android device.";
+      }
+    } else {
+      document.getElementById("deviceHint").textContent = "Visit binacesmartearn.online from your Android device to install and register.";
+    }
+
+    function copyRef() {
+      if (!cleanRef || !navigator.clipboard) return;
+      navigator.clipboard.writeText(cleanRef);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,407 @@
+package com.example.ui.screens
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.Today
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.example.data.model.AppUpdateInfo
+import com.example.data.model.DepositRequest
+import com.example.data.model.ReferralRecord
+import com.example.data.model.UserProfile
+import com.example.data.model.WithdrawalRequest
+import com.example.ui.components.BalanceHeroCard
+import com.example.ui.components.FintechFormatters
+import com.example.ui.components.StatMiniCard
+import com.example.ui.theme.AmberPending
+
+@Composable
+fun HomeDashboardScreen(
+    profile: UserProfile,
+    todayDateKey: String,
+    isAdmin: Boolean,
+    deposits: List<DepositRequest>,
+    withdrawals: List<WithdrawalRequest>,
+    referrals: List<ReferralRecord>,
+    appUpdateInfo: AppUpdateInfo = AppUpdateInfo(),
+    onDownloadApk: (String) -> Unit = {},
+    onNavigateTasks: () -> Unit,
+    onNavigateDeposit: () -> Unit,
+    onNavigateWithdraw: () -> Unit,
+    onNavigateReferrals: () -> Unit,
+    onNavigateHistory: () -> Unit,
+    onNavigateProfile: () -> Unit,
+    onOpenSupport: () -> Unit,
+    onOpenAdmin: () -> Unit
+) {
+    val todayEarnings = if (profile.todayTaskDate == todayDateKey) profile.todayTaskEarnings else 0.0
+    val pendingRequestsCount = deposits.count { it.status.equals("pending", ignoreCase = true) } +
+        withdrawals.count { it.status.equals("pending", ignoreCase = true) }
+    val approvedCommissionTotal = referrals
+        .filter { it.commissionStatus == "approved" }
+        .sumOf { it.commissionAmount }
+        .coerceAtLeast(profile.totalReferralCommission)
+    val totalReferralsCount = maxOf(referrals.size, profile.totalReferrals.toInt())
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .widthIn(max = 720.dp)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Welcome back, @${profile.username}",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "User ID: ${profile.uid.take(12).uppercase()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (isAdmin) {
+                        AssistChip(
+                            onClick = onOpenAdmin,
+                            label = { Text("Admin Console") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.AdminPanelSettings,
+                                    contentDescription = "Open Admin Console",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            modifier = Modifier.testTag("home_admin_chip")
+                        )
+                    }
+                }
+            }
+
+            if (profile.accountStatus == "suspended") {
+                item {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "This account is currently suspended by an administrator. Contact support for review.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                }
+            }
+
+            item {
+                BalanceHeroCard(
+                    totalBalance = profile.combinedBalance,
+                    realBalance = profile.realBalance,
+                    rewardBalance = profile.realRewardBalance,
+                    walletId = profile.walletId
+                )
+            }
+
+            if (appUpdateInfo.isUpdateAvailable && appUpdateInfo.downloadUrl.isNotBlank()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("home_update_banner")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = "New update available",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Update Available • v${appUpdateInfo.latestVersionName}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = appUpdateInfo.releaseNotes.ifBlank {
+                                            "New signed release APK is ready (current: v${appUpdateInfo.currentVersionName})."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Button(
+                                onClick = { onDownloadApk(appUpdateInfo.downloadUrl) },
+                                modifier = Modifier
+                                    .height(48.dp)
+                                    .testTag("home_download_apk_button")
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Download")
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        StatMiniCard(
+                            title = "Today's Tasks",
+                            value = FintechFormatters.formatPkr(todayEarnings),
+                            icon = Icons.Default.Today,
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatMiniCard(
+                            title = "Completed Tasks",
+                            value = "${profile.completedTasksCount}",
+                            icon = Icons.Default.CheckCircle,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        StatMiniCard(
+                            title = "Total Referrals",
+                            value = "$totalReferralsCount",
+                            icon = Icons.Default.Group,
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatMiniCard(
+                            title = "Ref Commission",
+                            value = FintechFormatters.formatPkr(approvedCommissionTotal),
+                            icon = Icons.Default.CardGiftcard,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    StatMiniCard(
+                        title = "Pending Deposit & Withdrawal Requests",
+                        value = "$pendingRequestsCount pending",
+                        icon = Icons.Default.HourglassTop,
+                        accentColor = AmberPending,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            item {
+                Text(
+                    text = "Quick Actions",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
+            item {
+                val shortcuts = listOf(
+                    ShortcutItem("Daily Tasks", "Earn PKR rewards", Icons.Default.TaskAlt, "shortcut_daily_tasks", onNavigateTasks),
+                    ShortcutItem("Deposit", "Add wallet funds", Icons.Default.ArrowDownward, "shortcut_deposit", onNavigateDeposit),
+                    ShortcutItem("Withdrawal", "Request payout", Icons.Default.ArrowUpward, "shortcut_withdrawal", onNavigateWithdraw),
+                    ShortcutItem("Referral Program", "Earn PKR 100/invite", Icons.Default.CardGiftcard, "shortcut_referrals", onNavigateReferrals),
+                    ShortcutItem("Transaction History", "Full wallet ledger", Icons.Default.History, "shortcut_history", onNavigateHistory),
+                    ShortcutItem("My Profile", "Account & security", Icons.Default.Person, "shortcut_profile", onNavigateProfile),
+                    ShortcutItem("Customer Support", "WhatsApp Channel", Icons.Default.SupportAgent, "shortcut_support", onOpenSupport)
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    shortcuts.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            pair.forEach { item ->
+                                ShortcutCard(
+                                    item = item,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (pair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountBalanceWallet,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "All wallet balances, deposits, withdrawals, and PKR 100 referral commissions in Binace Smart Earn are tracked and verified securely.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class ShortcutItem(
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val tag: String,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun ShortcutCard(
+    item: ShortcutItem,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .testTag(item.tag)
+            .clickable(onClick = item.onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(42.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = item.icon,
+                        contentDescription = item.title,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = item.subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}

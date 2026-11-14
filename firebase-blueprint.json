@@ -1,0 +1,357 @@
+{
+  "entities": {
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Authorized administrator registry keyed by Firebase UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "addedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered user profile and wallet summary.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "fullName": { "type": "string" },
+        "username": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "referralCode": { "type": "string" },
+        "referredBy": { "type": "string" },
+        "referredByUid": { "type": "string" },
+        "walletId": { "type": "string" },
+        "realBalance": { "type": "number" },
+        "realRewardBalance": { "type": "number" },
+        "todayTaskEarnings": { "type": "number" },
+        "todayTaskDate": { "type": "string" },
+        "totalEarnedTasks": { "type": "number" },
+        "completedTasksCount": { "type": "integer" },
+        "totalReferrals": { "type": "integer" },
+        "totalReferralCommission": { "type": "number" },
+        "lastClaimedUserTaskId": { "type": "string" },
+        "accountStatus": { "type": "string", "enum": ["active", "suspended"] },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid", "fullName", "username", "email", "phone", "referralCode",
+        "walletId", "realBalance", "realRewardBalance", "todayTaskEarnings",
+        "todayTaskDate", "totalEarnedTasks", "completedTasksCount",
+        "totalReferrals", "totalReferralCommission", "accountStatus", "role",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "WalletAccount": {
+      "title": "WalletAccount",
+      "description": "Dedicated real-time user wallet document keyed by UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "walletId": { "type": "string" },
+        "balance": { "type": "number" },
+        "depositBalance": { "type": "number" },
+        "rewardBalance": { "type": "number" },
+        "todayTaskEarnings": { "type": "number" },
+        "todayTaskDate": { "type": "string" },
+        "totalEarnedTasks": { "type": "number" },
+        "totalReferralCommission": { "type": "number" },
+        "lastClaimedTaskCompletionId": { "type": "string" },
+        "currency": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid", "walletId", "balance", "depositBalance", "rewardBalance",
+        "todayTaskEarnings", "todayTaskDate", "totalEarnedTasks",
+        "totalReferralCommission", "currency", "createdAt", "updatedAt"
+      ]
+    },
+    "ReferralCodeEntry": {
+      "title": "ReferralCodeEntry",
+      "description": "Publicly resolvable referral code lookup mapping code to referrer UID.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "uid", "username", "createdAt"]
+    },
+    "TaskItem": {
+      "title": "TaskItem",
+      "description": "Daily task definition managed by admins.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string", "enum": ["daily_login", "watch_video", "daily_activity", "referral_activity"] },
+        "rewardPoints": { "type": "number" },
+        "dailyLimit": { "type": "integer" },
+        "durationSeconds": { "type": "integer" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "category", "rewardPoints", "dailyLimit", "durationSeconds", "isActive", "createdAt", "updatedAt"]
+    },
+    "DailyTaskCompletion": {
+      "title": "DailyTaskCompletion",
+      "description": "Per-user daily task start and completion tracking keyed by uid_taskId_dateKey (Asia/Karachi).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "taskId": { "type": "string" },
+        "taskTitle": { "type": "string" },
+        "dateKey": { "type": "string" },
+        "status": { "type": "string", "enum": ["in_progress", "claimed"] },
+        "rewardPoints": { "type": "number" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "taskId", "taskTitle", "dateKey", "status", "rewardPoints", "startedAt", "updatedAt"]
+    },
+    "PaymentAccountConfig": {
+      "title": "PaymentAccountConfig",
+      "description": "Admin-managed payment receiving account configuration (EasyPaisa, JazzCash, Bank Transfer).",
+      "type": "object",
+      "properties": {
+        "providerKey": { "type": "string", "enum": ["easypaisa", "jazzcash", "bank_transfer"] },
+        "providerName": { "type": "string" },
+        "bankName": { "type": "string" },
+        "accountHolderName": { "type": "string" },
+        "accountNumber": { "type": "string" },
+        "iban": { "type": "string" },
+        "instructions": { "type": "string" },
+        "qrCodeData": { "type": "string" },
+        "isEnabled": { "type": "boolean" },
+        "updatedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["providerKey", "providerName", "accountHolderName", "accountNumber", "instructions", "isEnabled", "updatedAt"]
+    },
+    "DepositReferenceEntry": {
+      "title": "DepositReferenceEntry",
+      "description": "Unique transaction reference guard to prevent duplicate deposit submissions.",
+      "type": "object",
+      "properties": {
+        "refKey": { "type": "string" },
+        "transactionReference": { "type": "string" },
+        "depositId": { "type": "string" },
+        "userUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["refKey", "transactionReference", "depositId", "userUid", "createdAt"]
+    },
+    "DepositRequest": {
+      "title": "DepositRequest",
+      "description": "Deposit request with selected payment account details, transaction reference, and receipt proof.",
+      "type": "object",
+      "properties": {
+        "depositId": { "type": "string" },
+        "uid": { "type": "string" },
+        "userUid": { "type": "string" },
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "paymentAccountName": { "type": "string" },
+        "paymentAccountNumber": { "type": "string" },
+        "reference": { "type": "string" },
+        "transactionReference": { "type": "string" },
+        "refKey": { "type": "string" },
+        "receiptStoragePath": { "type": "string" },
+        "receiptUrl": { "type": "string" },
+        "receiptBase64": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "pending", "approved", "rejected"] },
+        "adminNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "reviewedBy": { "type": "string" },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["depositId", "uid", "userUid", "username", "fullName", "userEmail", "userPhone", "amount", "paymentMethod", "paymentAccountName", "paymentAccountNumber", "reference", "transactionReference", "refKey", "status", "createdAt", "updatedAt"]
+    },
+    "WithdrawalRequest": {
+      "title": "WithdrawalRequest",
+      "description": "Withdrawal request with payment method and account reference.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "accountReference": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "adminNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "username", "amount", "paymentMethod", "accountReference", "status", "createdAt", "updatedAt"]
+    },
+    "ReferralRecord": {
+      "title": "ReferralRecord",
+      "description": "Referral relationship between referrer and referred user.",
+      "type": "object",
+      "properties": {
+        "referrerUid": { "type": "string" },
+        "referredUid": { "type": "string" },
+        "referredUsername": { "type": "string" },
+        "referralCode": { "type": "string" },
+        "registrationDate": { "type": "string", "format": "date-time" },
+        "firstDepositVerified": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["registered", "qualified", "rewarded", "rejected"] },
+        "commissionAmount": { "type": "number" },
+        "commissionStatus": { "type": "string", "enum": ["none", "pending", "approved", "rejected"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "referrerUid", "referredUid", "referredUsername", "referralCode",
+        "registrationDate", "firstDepositVerified", "status",
+        "commissionAmount", "commissionStatus", "updatedAt"
+      ]
+    },
+    "CommissionRecord": {
+      "title": "CommissionRecord",
+      "description": "Referral commission payout record (default PKR 100).",
+      "type": "object",
+      "properties": {
+        "referrerUid": { "type": "string" },
+        "referredUid": { "type": "string" },
+        "referredUsername": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["referrerUid", "referredUid", "referredUsername", "amount", "currency", "status", "createdAt", "updatedAt"]
+    },
+    "TransactionRecord": {
+      "title": "TransactionRecord",
+      "description": "Wallet ledger transaction record.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "type": { "type": "string", "enum": ["task_reward", "deposit", "withdrawal", "referral_commission"] },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "completed", "approved", "rejected"] },
+        "description": { "type": "string" },
+        "referenceId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "type", "amount", "status", "description", "referenceId", "createdAt"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global platform configuration including referral commission and task reward settings.",
+      "type": "object",
+      "properties": {
+        "referralCommission": { "type": "number" },
+        "defaultTaskReward": { "type": "number" },
+        "maxDailyReward": { "type": "number" },
+        "currency": { "type": "string" },
+        "dailyTaskLimit": { "type": "integer" },
+        "minWithdrawal": { "type": "number" },
+        "minDeposit": { "type": "number" },
+        "githubRepoSlug": { "type": "string" },
+        "latestVersionName": { "type": "string" },
+        "latestVersionCode": { "type": "integer" },
+        "apkDownloadUrl": { "type": "string" },
+        "releaseNotes": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["referralCommission", "defaultTaskReward", "maxDailyReward", "currency", "dailyTaskLimit", "minWithdrawal", "minDeposit", "updatedAt"]
+    },
+    "AdminLog": {
+      "title": "AdminLog",
+      "description": "Immutable admin audit log entry.",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "targetCollection": { "type": "string" },
+        "targetId": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminUid", "adminEmail", "action", "targetCollection", "targetId", "details", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Admin role documents"
+    },
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles and account summaries"
+    },
+    "/wallets/{uid}": {
+      "schema": { "$ref": "#/entities/WalletAccount" },
+      "description": "User wallet accounts synced in real time"
+    },
+    "/referralCodes/{code}": {
+      "schema": { "$ref": "#/entities/ReferralCodeEntry" },
+      "description": "Referral code lookup table"
+    },
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/TaskItem" },
+      "description": "Daily tasks catalog"
+    },
+    "/dailyTaskCompletions/{completionId}": {
+      "schema": { "$ref": "#/entities/DailyTaskCompletion" },
+      "description": "User daily task completions"
+    },
+    "/paymentAccounts/{methodId}": {
+      "schema": { "$ref": "#/entities/PaymentAccountConfig" },
+      "description": "Admin-configured payment receiving accounts"
+    },
+    "/depositReferences/{refKey}": {
+      "schema": { "$ref": "#/entities/DepositReferenceEntry" },
+      "description": "Unique deposit transaction references"
+    },
+    "/deposits/{depositId}": {
+      "schema": { "$ref": "#/entities/DepositRequest" },
+      "description": "Deposit requests"
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": { "$ref": "#/entities/WithdrawalRequest" },
+      "description": "Withdrawal requests"
+    },
+    "/referrals/{referralId}": {
+      "schema": { "$ref": "#/entities/ReferralRecord" },
+      "description": "Referral tracking records"
+    },
+    "/commissions/{commissionId}": {
+      "schema": { "$ref": "#/entities/CommissionRecord" },
+      "description": "Referral commission records"
+    },
+    "/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/TransactionRecord" },
+      "description": "Transaction ledger"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/AppSettings" },
+      "description": "Global platform settings"
+    },
+    "/adminLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AdminLog" },
+      "description": "Immutable admin audit logs"
+    }
+  }
+}

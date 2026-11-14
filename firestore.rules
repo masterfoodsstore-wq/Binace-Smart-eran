@@ -1,0 +1,743 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isOptionalString(data, key, maxLen) {
+      return !(key in data) || data[key] == null || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        ('email' in request.auth.token &&
+         'email_verified' in request.auth.token &&
+         request.auth.token.email == 'masterfoodsstore@gmail.com' &&
+         request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // --- ENTITY VALIDATION HELPERS ---
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
+             data.keys().hasOnly(['uid', 'email', 'addedBy', 'createdAt']) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+             isOptionalString(data, 'addedBy', 128) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+               'uid', 'fullName', 'username', 'email', 'phone', 'referralCode',
+               'walletId', 'realBalance', 'realRewardBalance', 'todayTaskEarnings',
+               'todayTaskDate', 'totalEarnedTasks', 'completedTasksCount',
+               'totalReferrals', 'totalReferralCommission', 'accountStatus', 'role',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'uid', 'fullName', 'username', 'email', 'phone', 'referralCode',
+               'referredBy', 'referredByUid', 'walletId', 'realBalance',
+               'realRewardBalance', 'todayTaskEarnings', 'todayTaskDate',
+               'totalEarnedTasks', 'completedTasksCount', 'totalReferrals',
+               'totalReferralCommission', 'lastClaimedUserTaskId', 'accountStatus',
+               'role', 'createdAt', 'updatedAt'
+             ]) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 80 &&
+             data.username is string && data.username.size() >= 3 && data.username.size() <= 30 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+             data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 24 &&
+             data.referralCode is string && data.referralCode.size() >= 4 && data.referralCode.size() <= 24 &&
+             isOptionalString(data, 'referredBy', 24) &&
+             isOptionalString(data, 'referredByUid', 128) &&
+             data.walletId is string && data.walletId.size() >= 6 && data.walletId.size() <= 40 &&
+             data.realBalance is number && data.realBalance >= 0 &&
+             data.realRewardBalance is number && data.realRewardBalance >= 0 &&
+             data.todayTaskEarnings is number && data.todayTaskEarnings >= 0 &&
+             data.todayTaskDate is string && data.todayTaskDate.size() >= 8 && data.todayTaskDate.size() <= 16 &&
+             data.totalEarnedTasks is number && data.totalEarnedTasks >= 0 &&
+             data.completedTasksCount is int && data.completedTasksCount >= 0 &&
+             data.totalReferrals is int && data.totalReferrals >= 0 &&
+             data.totalReferralCommission is number && data.totalReferralCommission >= 0 &&
+             isOptionalString(data, 'lastClaimedUserTaskId', 160) &&
+             data.accountStatus in ['active', 'suspended'] &&
+             data.role in ['user', 'admin'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidWalletAccount(data) {
+      return data.keys().hasAll([
+               'uid', 'walletId', 'balance', 'depositBalance', 'rewardBalance',
+               'todayTaskEarnings', 'todayTaskDate', 'totalEarnedTasks',
+               'totalReferralCommission', 'currency', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'uid', 'walletId', 'balance', 'depositBalance', 'rewardBalance',
+               'todayTaskEarnings', 'todayTaskDate', 'totalEarnedTasks',
+               'totalReferralCommission', 'lastClaimedTaskCompletionId',
+               'currency', 'createdAt', 'updatedAt'
+             ]) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.walletId is string && data.walletId.size() >= 6 && data.walletId.size() <= 40 &&
+             data.balance is number && data.balance >= 0 &&
+             data.depositBalance is number && data.depositBalance >= 0 &&
+             data.rewardBalance is number && data.rewardBalance >= 0 &&
+             data.todayTaskEarnings is number && data.todayTaskEarnings >= 0 &&
+             data.todayTaskDate is string && data.todayTaskDate.size() >= 8 && data.todayTaskDate.size() <= 16 &&
+             data.totalEarnedTasks is number && data.totalEarnedTasks >= 0 &&
+             data.totalReferralCommission is number && data.totalReferralCommission >= 0 &&
+             isOptionalString(data, 'lastClaimedTaskCompletionId', 160) &&
+             data.currency is string && data.currency.size() >= 2 && data.currency.size() <= 8 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidReferralCodeEntry(data) {
+      return data.keys().hasAll(['code', 'uid', 'username', 'createdAt']) &&
+             data.keys().hasOnly(['code', 'uid', 'username', 'createdAt']) &&
+             data.code is string && data.code.size() >= 4 && data.code.size() <= 24 &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.username is string && data.username.size() >= 3 && data.username.size() <= 30 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidTaskItem(data) {
+      return data.keys().hasAll(['title', 'description', 'category', 'rewardPoints', 'dailyLimit', 'durationSeconds', 'isActive', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['title', 'description', 'category', 'rewardPoints', 'dailyLimit', 'durationSeconds', 'isActive', 'createdAt', 'updatedAt']) &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 100 &&
+             data.description is string && data.description.size() >= 2 && data.description.size() <= 500 &&
+             data.category in ['daily_login', 'watch_video', 'daily_activity', 'referral_activity'] &&
+             data.rewardPoints is number && data.rewardPoints > 0 && data.rewardPoints <= 50000 &&
+             data.dailyLimit is int && data.dailyLimit >= 1 && data.dailyLimit <= 10 &&
+             data.durationSeconds is int && data.durationSeconds >= 0 && data.durationSeconds <= 600 &&
+             data.isActive is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSeededDefaultTask(taskId, data) {
+      return isValidTaskItem(data) &&
+             taskId in [
+               'task_01_daily_login',
+               'task_02_educational_tip',
+               'task_03_educational_video',
+               'task_04_knowledge_quiz',
+               'task_05_english_word',
+               'task_06_financial_safety',
+               'task_07_general_knowledge',
+               'task_08_app_tutorial',
+               'task_09_learning_activity',
+               'task_10_knowledge_challenge'
+             ] &&
+             data.rewardPoints == 20 &&
+             data.dailyLimit == 1 &&
+             data.isActive == true;
+    }
+
+    function isValidDailyTaskCompletion(data) {
+      return data.keys().hasAll(['uid', 'taskId', 'taskTitle', 'dateKey', 'status', 'rewardPoints', 'startedAt', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'taskId', 'taskTitle', 'dateKey', 'status', 'rewardPoints', 'startedAt', 'completedAt', 'updatedAt']) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.taskId is string && data.taskId.size() >= 1 && data.taskId.size() <= 128 &&
+             data.taskTitle is string && data.taskTitle.size() >= 1 && data.taskTitle.size() <= 120 &&
+             data.dateKey is string && data.dateKey.size() == 10 &&
+             data.status in ['in_progress', 'claimed'] &&
+             data.rewardPoints is number && data.rewardPoints > 0 && data.rewardPoints <= 50000 &&
+             isValidTimestamp(data.startedAt) &&
+             (!('completedAt' in data) || data.completedAt == null || isValidTimestamp(data.completedAt)) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPaymentAccount(data) {
+      return data.keys().hasAll([
+               'providerKey', 'providerName', 'accountHolderName', 'accountNumber',
+               'instructions', 'isEnabled', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'providerKey', 'providerName', 'bankName', 'accountHolderName',
+               'accountNumber', 'iban', 'instructions', 'qrCodeData',
+               'isEnabled', 'updatedBy', 'updatedAt'
+             ]) &&
+             data.providerKey in ['easypaisa', 'jazzcash', 'bank_transfer'] &&
+             data.providerName is string && data.providerName.size() >= 2 && data.providerName.size() <= 60 &&
+             isOptionalString(data, 'bankName', 80) &&
+             data.accountHolderName is string && data.accountHolderName.size() >= 2 && data.accountHolderName.size() <= 80 &&
+             data.accountNumber is string && data.accountNumber.size() >= 4 && data.accountNumber.size() <= 40 &&
+             isOptionalString(data, 'iban', 40) &&
+             data.instructions is string && data.instructions.size() >= 2 && data.instructions.size() <= 500 &&
+             isOptionalString(data, 'qrCodeData', 200000) &&
+             data.isEnabled is bool &&
+             isOptionalString(data, 'updatedBy', 128) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidDepositReference(data) {
+      return data.keys().hasAll(['refKey', 'transactionReference', 'depositId', 'userUid', 'createdAt']) &&
+             data.keys().hasOnly(['refKey', 'transactionReference', 'depositId', 'userUid', 'createdAt']) &&
+             data.refKey is string && data.refKey.size() >= 3 && data.refKey.size() <= 100 &&
+             data.refKey.matches('^[A-Z0-9_-]+$') &&
+             data.transactionReference is string && data.transactionReference.size() >= 3 && data.transactionReference.size() <= 100 &&
+             data.depositId is string && isValidId(data.depositId) &&
+             data.userUid is string && data.userUid.size() >= 1 && data.userUid.size() <= 128 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidDepositRequest(data) {
+      return data.keys().hasAll([
+               'depositId', 'uid', 'userUid', 'username', 'amount', 'paymentMethod',
+               'reference', 'transactionReference', 'refKey', 'status', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'depositId', 'uid', 'userUid', 'username', 'fullName', 'userEmail', 'userPhone',
+               'amount', 'paymentMethod', 'paymentAccountName', 'paymentAccountNumber',
+               'reference', 'transactionReference', 'refKey',
+               'receiptStoragePath', 'receiptUrl', 'receiptBase64',
+               'status', 'adminNote', 'createdAt', 'updatedAt',
+               'reviewedAt', 'reviewedBy', 'approvedAt'
+             ]) &&
+             data.depositId is string && isValidId(data.depositId) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.userUid is string && data.userUid == data.uid &&
+             data.username is string && data.username.size() >= 3 && data.username.size() <= 30 &&
+             isOptionalString(data, 'fullName', 80) &&
+             isOptionalString(data, 'userEmail', 150) &&
+             isOptionalString(data, 'userPhone', 24) &&
+             data.amount is number && data.amount >= 50 && data.amount <= 10000000 &&
+             data.paymentMethod is string && data.paymentMethod.size() >= 2 && data.paymentMethod.size() <= 60 &&
+             isOptionalString(data, 'paymentAccountName', 80) &&
+             isOptionalString(data, 'paymentAccountNumber', 40) &&
+             data.reference is string && data.reference.size() >= 3 && data.reference.size() <= 100 &&
+             data.transactionReference is string && data.transactionReference == data.reference &&
+             data.refKey is string && data.refKey.size() >= 3 && data.refKey.size() <= 100 &&
+             data.refKey == data.transactionReference.upper().replace('[^A-Z0-9_-]', '_') &&
+             isOptionalString(data, 'receiptStoragePath', 300) &&
+             isOptionalString(data, 'receiptUrl', 1000) &&
+             isOptionalString(data, 'receiptBase64', 200000) &&
+             data.status in ['PENDING', 'APPROVED', 'REJECTED', 'pending', 'approved', 'rejected'] &&
+             isOptionalString(data, 'adminNote', 300) &&
+             isOptionalString(data, 'reviewedBy', 150) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt) &&
+             (!('reviewedAt' in data) || data.reviewedAt == null || isValidTimestamp(data.reviewedAt)) &&
+             (!('approvedAt' in data) || data.approvedAt == null || isValidTimestamp(data.approvedAt));
+    }
+
+    function isValidWithdrawalRequest(data) {
+      return data.keys().hasAll(['uid', 'username', 'amount', 'paymentMethod', 'accountReference', 'status', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'username', 'amount', 'paymentMethod', 'accountReference', 'status', 'adminNote', 'createdAt', 'updatedAt', 'approvedAt']) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.username is string && data.username.size() >= 3 && data.username.size() <= 30 &&
+             data.amount is number && data.amount >= 50 && data.amount <= 10000000 &&
+             data.paymentMethod is string && data.paymentMethod.size() >= 2 && data.paymentMethod.size() <= 60 &&
+             data.accountReference is string && data.accountReference.size() >= 3 && data.accountReference.size() <= 100 &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             isOptionalString(data, 'adminNote', 300) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt) &&
+             (!('approvedAt' in data) || data.approvedAt == null || isValidTimestamp(data.approvedAt));
+    }
+
+    function isValidReferralRecord(data) {
+      return data.keys().hasAll([
+               'referrerUid', 'referredUid', 'referredUsername', 'referralCode',
+               'registrationDate', 'firstDepositVerified', 'status',
+               'commissionAmount', 'commissionStatus', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'referrerUid', 'referredUid', 'referredUsername', 'referralCode',
+               'registrationDate', 'firstDepositVerified', 'status',
+               'commissionAmount', 'commissionStatus', 'updatedAt'
+             ]) &&
+             data.referrerUid is string && data.referrerUid.size() >= 1 && data.referrerUid.size() <= 128 &&
+             data.referredUid is string && data.referredUid.size() >= 1 && data.referredUid.size() <= 128 &&
+             data.referrerUid != data.referredUid &&
+             data.referredUsername is string && data.referredUsername.size() >= 3 && data.referredUsername.size() <= 30 &&
+             data.referralCode is string && data.referralCode.size() >= 4 && data.referralCode.size() <= 24 &&
+             isValidTimestamp(data.registrationDate) &&
+             data.firstDepositVerified is bool &&
+             data.status in ['registered', 'qualified', 'rewarded', 'rejected'] &&
+             data.commissionAmount is number && data.commissionAmount >= 0 && data.commissionAmount <= 100000 &&
+             data.commissionStatus in ['none', 'pending', 'approved', 'rejected'] &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidCommissionRecord(data) {
+      return data.keys().hasAll(['referrerUid', 'referredUid', 'referredUsername', 'amount', 'currency', 'status', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['referrerUid', 'referredUid', 'referredUsername', 'amount', 'currency', 'status', 'createdAt', 'updatedAt', 'approvedAt']) &&
+             data.referrerUid is string && data.referrerUid.size() >= 1 && data.referrerUid.size() <= 128 &&
+             data.referredUid is string && data.referredUid.size() >= 1 && data.referredUid.size() <= 128 &&
+             data.referrerUid != data.referredUid &&
+             data.referredUsername is string && data.referredUsername.size() >= 3 && data.referredUsername.size() <= 30 &&
+             data.amount is number && data.amount > 0 && data.amount <= 100000 &&
+             data.currency is string && data.currency.size() >= 2 && data.currency.size() <= 8 &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt) &&
+             (!('approvedAt' in data) || data.approvedAt == null || isValidTimestamp(data.approvedAt));
+    }
+
+    function isValidTransactionRecord(data) {
+      return data.keys().hasAll(['uid', 'type', 'amount', 'status', 'description', 'referenceId', 'createdAt']) &&
+             data.keys().hasOnly(['uid', 'type', 'amount', 'status', 'description', 'referenceId', 'createdAt']) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.type in ['task_reward', 'deposit', 'withdrawal', 'referral_commission'] &&
+             data.amount is number && data.amount > 0 && data.amount <= 10000000 &&
+             data.status in ['pending', 'completed', 'approved', 'rejected'] &&
+             data.description is string && data.description.size() >= 2 && data.description.size() <= 240 &&
+             data.referenceId is string && data.referenceId.size() >= 1 && data.referenceId.size() <= 160 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidAppSettings(data) {
+      return data.keys().hasAll(['referralCommission', 'defaultTaskReward', 'maxDailyReward', 'currency', 'dailyTaskLimit', 'minWithdrawal', 'minDeposit', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'referralCommission', 'defaultTaskReward', 'maxDailyReward', 'currency',
+               'dailyTaskLimit', 'minWithdrawal', 'minDeposit',
+               'githubRepoSlug', 'latestVersionName', 'latestVersionCode', 'apkDownloadUrl', 'releaseNotes',
+               'updatedAt'
+             ]) &&
+             data.referralCommission is number && data.referralCommission >= 0 && data.referralCommission <= 100000 &&
+             data.defaultTaskReward is number && data.defaultTaskReward > 0 && data.defaultTaskReward <= 50000 &&
+             data.maxDailyReward is number && data.maxDailyReward >= data.defaultTaskReward && data.maxDailyReward <= 500000 &&
+             data.currency is string && data.currency.size() >= 2 && data.currency.size() <= 8 &&
+             data.dailyTaskLimit is int && data.dailyTaskLimit >= 1 && data.dailyTaskLimit <= 50 &&
+             data.minWithdrawal is number && data.minWithdrawal >= 1 && data.minWithdrawal <= 1000000 &&
+             data.minDeposit is number && data.minDeposit >= 1 && data.minDeposit <= 1000000 &&
+             isOptionalString(data, 'githubRepoSlug', 160) &&
+             isOptionalString(data, 'latestVersionName', 40) &&
+             (!('latestVersionCode' in data) || (data.latestVersionCode is int && data.latestVersionCode >= 0 && data.latestVersionCode <= 1000000)) &&
+             isOptionalString(data, 'apkDownloadUrl', 600) &&
+             isOptionalString(data, 'releaseNotes', 1000) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAdminLog(data) {
+      return data.keys().hasAll(['adminUid', 'adminEmail', 'action', 'targetCollection', 'targetId', 'details', 'createdAt']) &&
+             data.keys().hasOnly(['adminUid', 'adminEmail', 'action', 'targetCollection', 'targetId', 'details', 'createdAt']) &&
+             data.adminUid is string && data.adminUid.size() >= 1 && data.adminUid.size() <= 128 &&
+             data.adminEmail is string && data.adminEmail.size() >= 3 && data.adminEmail.size() <= 150 &&
+             data.action is string && data.action.size() >= 2 && data.action.size() <= 80 &&
+             data.targetCollection is string && data.targetCollection.size() >= 2 && data.targetCollection.size() <= 60 &&
+             data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 160 &&
+             data.details is string && data.details.size() >= 2 && data.details.size() <= 500 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    // --- ATOMIC TASK CLAIM VALIDATION HELPERS ---
+    function isTaskCompletionNotYetClaimed(compId) {
+      return !exists(/databases/$(database)/documents/dailyTaskCompletions/$(compId)) ||
+             get(/databases/$(database)/documents/dailyTaskCompletions/$(compId)).data.status == 'in_progress';
+    }
+
+    function isTaskActiveDoc(taskId) {
+      return exists(/databases/$(database)/documents/tasks/$(taskId)) &&
+             get(/databases/$(database)/documents/tasks/$(taskId)).data.isActive == true;
+    }
+
+    function isExactRewardDelta(reward) {
+      return incoming().realRewardBalance >= existing().realRewardBalance + reward - 0.001 &&
+             incoming().realRewardBalance <= existing().realRewardBalance + reward + 0.001 &&
+             incoming().totalEarnedTasks >= existing().totalEarnedTasks + reward - 0.001 &&
+             incoming().totalEarnedTasks <= existing().totalEarnedTasks + reward + 0.001 &&
+             (
+               (incoming().todayTaskDate == existing().todayTaskDate &&
+                incoming().todayTaskEarnings >= existing().todayTaskEarnings + reward - 0.001 &&
+                incoming().todayTaskEarnings <= existing().todayTaskEarnings + reward + 0.001) ||
+               (incoming().todayTaskDate != existing().todayTaskDate &&
+                incoming().todayTaskEarnings >= reward - 0.001 &&
+                incoming().todayTaskEarnings <= reward + 0.001)
+             );
+    }
+
+    function verifyClaimedCompletion(uid, utData) {
+      return utData.uid == uid &&
+             utData.status == 'claimed' &&
+             isTaskActiveDoc(utData.taskId) &&
+             isExactRewardDelta(utData.rewardPoints);
+    }
+
+    function isAtomicTaskRewardUpdate(uid) {
+      return incoming().diff(existing()).affectedKeys().hasOnly([
+               'realRewardBalance', 'todayTaskEarnings', 'todayTaskDate',
+               'totalEarnedTasks', 'completedTasksCount', 'lastClaimedUserTaskId', 'updatedAt'
+             ]) &&
+             incoming().lastClaimedUserTaskId is string &&
+             isValidId(incoming().lastClaimedUserTaskId) &&
+             incoming().completedTasksCount == existing().completedTasksCount + 1 &&
+             isTaskCompletionNotYetClaimed(incoming().lastClaimedUserTaskId) &&
+             verifyClaimedCompletion(uid, getAfter(/databases/$(database)/documents/dailyTaskCompletions/$(incoming().lastClaimedUserTaskId)).data);
+    }
+
+    function isExactWalletRewardDelta(reward) {
+      return incoming().balance >= existing().balance + reward - 0.001 &&
+             incoming().balance <= existing().balance + reward + 0.001 &&
+             incoming().rewardBalance >= existing().rewardBalance + reward - 0.001 &&
+             incoming().rewardBalance <= existing().rewardBalance + reward + 0.001 &&
+             incoming().totalEarnedTasks >= existing().totalEarnedTasks + reward - 0.001 &&
+             incoming().totalEarnedTasks <= existing().totalEarnedTasks + reward + 0.001 &&
+             (
+               (incoming().todayTaskDate == existing().todayTaskDate &&
+                incoming().todayTaskEarnings >= existing().todayTaskEarnings + reward - 0.001 &&
+                incoming().todayTaskEarnings <= existing().todayTaskEarnings + reward + 0.001) ||
+               (incoming().todayTaskDate != existing().todayTaskDate &&
+                incoming().todayTaskEarnings >= reward - 0.001 &&
+                incoming().todayTaskEarnings <= reward + 0.001)
+             );
+    }
+
+    function verifyClaimedWalletCompletion(uid, utData) {
+      return utData.uid == uid &&
+             utData.status == 'claimed' &&
+             isTaskActiveDoc(utData.taskId) &&
+             isExactWalletRewardDelta(utData.rewardPoints);
+    }
+
+    function isAtomicWalletTaskRewardUpdate(uid) {
+      return incoming().diff(existing()).affectedKeys().hasOnly([
+               'balance', 'rewardBalance', 'todayTaskEarnings', 'todayTaskDate',
+               'totalEarnedTasks', 'lastClaimedTaskCompletionId', 'updatedAt'
+             ]) &&
+             incoming().lastClaimedTaskCompletionId is string &&
+             isValidId(incoming().lastClaimedTaskCompletionId) &&
+             isTaskCompletionNotYetClaimed(incoming().lastClaimedTaskCompletionId) &&
+             verifyClaimedWalletCompletion(uid, getAfter(/databases/$(database)/documents/dailyTaskCompletions/$(incoming().lastClaimedTaskCompletionId)).data);
+    }
+
+    // --- COLLECTIONS ---
+
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isValidId(uid) && isAdmin() && isValidAdminRecord(incoming()) && incoming().uid == uid;
+      allow delete: if isValidId(uid) && isAdmin();
+    }
+
+    match /users/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isValidId(uid) &&
+                       isOwner(uid) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().uid == uid &&
+                       incoming().realBalance == 0 &&
+                       incoming().realRewardBalance == 0 &&
+                       incoming().todayTaskEarnings == 0 &&
+                       incoming().totalEarnedTasks == 0 &&
+                       incoming().completedTasksCount == 0 &&
+                       incoming().totalReferrals == 0 &&
+                       incoming().totalReferralCommission == 0 &&
+                       incoming().accountStatus == 'active' &&
+                       incoming().role == 'user';
+
+      allow update: if isValidId(uid) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().createdAt == existing().createdAt && (
+                         isAdmin() ||
+                         (
+                           isOwner(uid) &&
+                           existing().accountStatus == 'active' &&
+                           incoming().role == existing().role &&
+                           incoming().accountStatus == existing().accountStatus &&
+                           incoming().walletId == existing().walletId &&
+                           incoming().referralCode == existing().referralCode &&
+                           incoming().email == existing().email &&
+                           incoming().get('referredBy', '') == existing().get('referredBy', '') &&
+                           incoming().get('referredByUid', '') == existing().get('referredByUid', '') &&
+                           (
+                             incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username', 'phone', 'updatedAt']) ||
+                             isAtomicTaskRewardUpdate(uid)
+                           )
+                         )
+                       );
+
+      allow delete: if isValidId(uid) && isAdmin();
+    }
+
+    match /wallets/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isValidId(uid) &&
+                       isOwner(uid) &&
+                       isValidWalletAccount(incoming()) &&
+                       incoming().uid == uid &&
+                       incoming().balance == 0 &&
+                       incoming().depositBalance == 0 &&
+                       incoming().rewardBalance == 0 &&
+                       incoming().todayTaskEarnings == 0 &&
+                       incoming().totalEarnedTasks == 0 &&
+                       incoming().totalReferralCommission == 0;
+
+      allow update: if isValidId(uid) &&
+                       isValidWalletAccount(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().createdAt == existing().createdAt && (
+                         isAdmin() ||
+                         (
+                           isOwner(uid) &&
+                           incoming().walletId == existing().walletId &&
+                           incoming().currency == existing().currency &&
+                           incoming().depositBalance == existing().depositBalance &&
+                           incoming().totalReferralCommission == existing().totalReferralCommission &&
+                           isAtomicWalletTaskRewardUpdate(uid)
+                         )
+                       );
+
+      allow delete: if isValidId(uid) && isAdmin();
+    }
+
+    match /referralCodes/{code} {
+      allow get: if isValidId(code) && isSignedIn();
+      allow list: if false;
+      allow create: if isValidId(code) &&
+                       isSignedIn() &&
+                       isValidReferralCodeEntry(incoming()) &&
+                       incoming().code == code &&
+                       incoming().uid == request.auth.uid;
+      allow update, delete: if isValidId(code) && isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow get: if isValidId(taskId) && isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isValidId(taskId) && (
+        (isAdmin() && isValidTaskItem(incoming())) ||
+        (isSignedIn() && isValidSeededDefaultTask(taskId, incoming()))
+      );
+      allow update: if isValidId(taskId) && isAdmin() && isValidTaskItem(incoming());
+      allow delete: if isValidId(taskId) && isAdmin();
+    }
+
+    match /dailyTaskCompletions/{completionId} {
+      allow get: if isValidId(completionId) && (
+        isAdmin() ||
+        (isSignedIn() && (
+          (resource == null && completionId.size() > request.auth.uid.size() && completionId[0:request.auth.uid.size() + 1] == request.auth.uid + '_') ||
+          (resource != null && existing().uid == request.auth.uid)
+        ))
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      allow create: if isValidId(completionId) &&
+                       isSignedIn() &&
+                       isValidDailyTaskCompletion(incoming()) &&
+                       incoming().uid == request.auth.uid &&
+                       completionId == incoming().uid + '_' + incoming().taskId + '_' + incoming().dateKey &&
+                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'active' &&
+                       exists(/databases/$(database)/documents/tasks/$(incoming().taskId)) &&
+                       get(/databases/$(database)/documents/tasks/$(incoming().taskId)).data.isActive == true &&
+                       incoming().rewardPoints == get(/databases/$(database)/documents/tasks/$(incoming().taskId)).data.rewardPoints;
+
+      allow update: if isValidId(completionId) &&
+                       isValidDailyTaskCompletion(incoming()) && (
+                         isAdmin() ||
+                         (
+                           isSignedIn() &&
+                           existing().uid == request.auth.uid &&
+                           incoming().uid == existing().uid &&
+                           incoming().taskId == existing().taskId &&
+                           incoming().dateKey == existing().dateKey &&
+                           incoming().rewardPoints == existing().rewardPoints &&
+                           incoming().startedAt == existing().startedAt &&
+                           existing().status == 'in_progress' &&
+                           incoming().status == 'claimed' &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'completedAt', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isValidId(completionId) && isAdmin();
+    }
+
+    match /paymentAccounts/{methodId} {
+      allow get: if isValidId(methodId) && isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update: if isValidId(methodId) &&
+                               isAdmin() &&
+                               isValidPaymentAccount(incoming()) &&
+                               incoming().providerKey == methodId;
+      allow delete: if isValidId(methodId) && isAdmin();
+    }
+
+    match /depositReferences/{refKey} {
+      allow get: if isValidId(refKey) && isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(refKey) &&
+                       isSignedIn() &&
+                       isValidDepositReference(incoming()) &&
+                       incoming().refKey == refKey &&
+                       incoming().userUid == request.auth.uid &&
+                       existsAfter(/databases/$(database)/documents/deposits/$(incoming().depositId));
+      allow update: if false;
+      allow delete: if isValidId(refKey) && isAdmin();
+    }
+
+    match /deposits/{depositId} {
+      allow get: if isValidId(depositId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      allow create: if isValidId(depositId) &&
+                       isSignedIn() &&
+                       isValidDepositRequest(incoming()) &&
+                       incoming().depositId == depositId &&
+                       incoming().uid == request.auth.uid &&
+                       incoming().userUid == request.auth.uid &&
+                       incoming().status in ['PENDING', 'pending'] &&
+                       !('approvedAt' in incoming()) &&
+                       !('reviewedAt' in incoming()) &&
+                       !('reviewedBy' in incoming()) &&
+                       !('adminNote' in incoming()) &&
+                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'active' &&
+                       existsAfter(/databases/$(database)/documents/depositReferences/$(incoming().refKey)) &&
+                       getAfter(/databases/$(database)/documents/depositReferences/$(incoming().refKey)).data.depositId == depositId &&
+                       getAfter(/databases/$(database)/documents/depositReferences/$(incoming().refKey)).data.userUid == request.auth.uid;
+
+      allow update: if isValidId(depositId) &&
+                       isAdmin() &&
+                       isValidDepositRequest(incoming()) &&
+                       incoming().depositId == existing().depositId &&
+                       incoming().uid == existing().uid &&
+                       incoming().userUid == existing().userUid &&
+                       incoming().amount == existing().amount &&
+                       incoming().paymentMethod == existing().paymentMethod &&
+                       incoming().transactionReference == existing().transactionReference &&
+                       incoming().createdAt == existing().createdAt &&
+                       existing().status in ['PENDING', 'pending'] &&
+                       incoming().status in ['APPROVED', 'REJECTED', 'approved', 'rejected'];
+
+      allow delete: if isValidId(depositId) && isAdmin();
+    }
+
+    match /withdrawals/{withdrawalId} {
+      allow get: if isValidId(withdrawalId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      allow create: if isValidId(withdrawalId) &&
+                       isSignedIn() &&
+                       isValidWithdrawalRequest(incoming()) &&
+                       incoming().uid == request.auth.uid &&
+                       incoming().status == 'pending' &&
+                       !('approvedAt' in incoming()) &&
+                       !('adminNote' in incoming()) &&
+                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'active' &&
+                       incoming().amount <= (
+                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.realBalance +
+                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.realRewardBalance
+                       );
+
+      allow update: if isValidId(withdrawalId) &&
+                       isAdmin() &&
+                       isValidWithdrawalRequest(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().amount == existing().amount &&
+                       incoming().createdAt == existing().createdAt &&
+                       existing().status == 'pending' &&
+                       incoming().status in ['approved', 'rejected'];
+
+      allow delete: if isValidId(withdrawalId) && isAdmin();
+    }
+
+    match /referrals/{referralId} {
+      allow get: if isValidId(referralId) && (
+        isAdmin() || (isSignedIn() && (
+          (resource == null && referralId == request.auth.uid) ||
+          (resource != null && (existing().referrerUid == request.auth.uid || existing().referredUid == request.auth.uid))
+        ))
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.referrerUid == request.auth.uid);
+
+      allow create: if isValidId(referralId) &&
+                       isSignedIn() &&
+                       referralId == request.auth.uid &&
+                       isValidReferralRecord(incoming()) &&
+                       incoming().referredUid == request.auth.uid &&
+                       incoming().firstDepositVerified == false &&
+                       incoming().status == 'registered' &&
+                       incoming().commissionAmount == 0 &&
+                       incoming().commissionStatus == 'none' &&
+                       exists(/databases/$(database)/documents/referralCodes/$(incoming().referralCode)) &&
+                       get(/databases/$(database)/documents/referralCodes/$(incoming().referralCode)).data.uid == incoming().referrerUid;
+
+      allow update: if isValidId(referralId) && isAdmin() && isValidReferralRecord(incoming());
+      allow delete: if isValidId(referralId) && isAdmin();
+    }
+
+    match /commissions/{commissionId} {
+      allow get: if isValidId(commissionId) && (isAdmin() || (isSignedIn() && resource != null && existing().referrerUid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.referrerUid == request.auth.uid);
+      allow create, update: if isValidId(commissionId) && isAdmin() && isValidCommissionRecord(incoming());
+      allow delete: if isValidId(commissionId) && isAdmin();
+    }
+
+    match /transactions/{transactionId} {
+      allow get: if isValidId(transactionId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+
+      allow create: if isValidId(transactionId) &&
+                       isValidTransactionRecord(incoming()) && (
+                         isAdmin() ||
+                         (
+                           isSignedIn() &&
+                           incoming().uid == request.auth.uid &&
+                           incoming().type == 'task_reward' &&
+                           incoming().status == 'completed' &&
+                           existsAfter(/databases/$(database)/documents/dailyTaskCompletions/$(incoming().referenceId)) &&
+                           getAfter(/databases/$(database)/documents/dailyTaskCompletions/$(incoming().referenceId)).data.uid == request.auth.uid &&
+                           getAfter(/databases/$(database)/documents/dailyTaskCompletions/$(incoming().referenceId)).data.status == 'claimed' &&
+                           incoming().amount == getAfter(/databases/$(database)/documents/dailyTaskCompletions/$(incoming().referenceId)).data.rewardPoints
+                         )
+                       );
+
+      allow update, delete: if isValidId(transactionId) && isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId) && isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update: if isValidId(settingId) && isAdmin() && isValidAppSettings(incoming());
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
+
+    match /adminLogs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(logId) && isAdmin() && isValidAdminLog(incoming()) && incoming().adminUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}

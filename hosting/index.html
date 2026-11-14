@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Binace Smart Earn — Official Website</title>
+  <style>
+    :root {
+      --bg: #070b09;
+      --card: #0e1612;
+      --border: #1e3328;
+      --green: #00d084;
+      --text: #f3f7f5;
+      --muted: #9eb5aa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at top, #0c261a 0%, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 520px;
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 28px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(0, 208, 132, 0.14);
+      color: var(--green);
+      border: 1px solid rgba(0, 208, 132, 0.4);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      margin-bottom: 16px;
+    }
+    h1 { font-size: 28px; margin-bottom: 10px; }
+    p { color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+    .actions { display: flex; flex-direction: column; gap: 12px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 18px;
+      border-radius: 14px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--green); color: #04140c; }
+    .btn-outline { border: 1px solid var(--border); color: var(--text); background: transparent; }
+  </style>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var ref = params.get("ref") || params.get("referral") || params.get("code");
+      if (ref && ref.trim()) {
+        window.location.replace("/signup?ref=" + encodeURIComponent(ref.trim().toUpperCase()));
+      }
+    })();
+  </script>
+</head>
+<body>
+  <main class="card">
+    <span class="badge">OFFICIAL PLATFORM • BINACESMARTEARN.ONLINE</span>
+    <h1>Binace Smart Earn</h1>
+    <p>Daily tasks, PKR wallet management, verified deposits &amp; withdrawals, and Rs. 100 referral commissions secured by Firebase.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="/signup">Open Signup Page</a>
+      <a class="btn btn-outline" href="https://whatsapp.com/channel/0029Vb9SL1bEFeXlCASyF41z" target="_blank" rel="noopener noreferrer">Official Support Channel</a>
+    </div>
+  </main>
+</body>
+</html>

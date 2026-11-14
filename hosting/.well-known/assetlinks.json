@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.aistudio.binacesmartearn.kxmpzq",
+      "sha256_cert_fingerprints": [
+        "07:19:DC:DE:BC:37:CB:30:0E:BE:3A:47:24:0C:E3:5F:C7:2F:EC:3B:BF:31:14:CD:84:56:54:45:2F:17:14:BA"
+      ]
+    }
+  }
+]
