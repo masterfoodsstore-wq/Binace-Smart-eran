@@ -1,0 +1,13 @@
+{
+  "name": "binace-smart-earn-functions",
+  "description": "Cloud Functions for Binace Smart Earn real-time live customer support notifications",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^13.0.1",
+    "firebase-functions": "^6.1.1"
+  },
+  "private": true
+}

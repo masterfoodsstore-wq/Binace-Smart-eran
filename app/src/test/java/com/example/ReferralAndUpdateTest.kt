@@ -124,4 +124,31 @@ class ReferralAndUpdateTest {
         )
         assertEquals("Improved wallet performance and signed release.", result.releaseNotes)
     }
+
+    @Test
+    fun `daily task reset countdown calculates exact PKT time until midnight`() {
+        val pktZone = java.util.TimeZone.getTimeZone(AppConstants.PKT_TIMEZONE_ID)
+        val cal = java.util.Calendar.getInstance(pktZone, java.util.Locale.US).apply {
+            set(2026, java.util.Calendar.NOVEMBER, 17, 22, 30, 15)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val countdown = com.example.util.TaskResetCountdownHelper.calculateCountdown(cal.timeInMillis)
+        assertEquals(1L, countdown.hours)
+        assertEquals(29L, countdown.minutes)
+        assertEquals(45L, countdown.seconds)
+        assertEquals("01:29:45", countdown.formattedHms)
+        assertEquals("2026-11-17", countdown.pktDateKey)
+        assertTrue(countdown.progressFraction > 0.9f && countdown.progressFraction < 1.0f)
+
+        val midnightCal = java.util.Calendar.getInstance(pktZone, java.util.Locale.US).apply {
+            set(2026, java.util.Calendar.NOVEMBER, 18, 0, 0, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val afterReset = com.example.util.TaskResetCountdownHelper.calculateCountdown(midnightCal.timeInMillis)
+        assertEquals(24L, afterReset.hours)
+        assertEquals(0L, afterReset.minutes)
+        assertEquals(0L, afterReset.seconds)
+        assertEquals("2026-11-18", afterReset.pktDateKey)
+        assertEquals(0.0f, afterReset.progressFraction, 0.001f)
+    }
 }

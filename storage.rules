@@ -28,5 +28,17 @@ service firebase.storage {
                       request.resource.contentType.matches('image/(jpeg|jpg|png)');
       allow delete: if isSignedIn() && (request.auth.uid == userUid || isAdmin());
     }
+
+    match /support_attachments/{uploaderUid}/{ticketId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() &&
+                      request.auth.uid == uploaderUid &&
+                      fileName.matches('^MSG-[a-zA-Z0-9_\\-]+\\.jpg$') &&
+                      request.resource != null &&
+                      request.resource.size > 0 &&
+                      request.resource.size <= 5 * 1024 * 1024 &&
+                      request.resource.contentType.matches('image/(jpeg|jpg|png)');
+      allow delete: if isSignedIn() && (request.auth.uid == uploaderUid || isAdmin());
+    }
   }
 }

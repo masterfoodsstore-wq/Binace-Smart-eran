@@ -181,6 +181,7 @@ jobs:
             --tests "com.example.ExampleUnitTest" \
             --tests "com.example.ExampleRobolectricTest" \
             --tests "com.example.ReferralAndUpdateTest" \
+            --tests "com.example.PlatformSystemsTest" \
             --no-daemon
 
       - name: Build Signed Release APK
@@ -191,7 +192,7 @@ jobs:
             -PGITHUB_REPOSITORY="${{ github.repository }}" \
             --no-daemon
 
-      - name: Verify & Stage Release APKs
+      - name: Sign (v1/v2/v3), Verify & Stage Release APKs
         shell: bash
         env:
           INPUT_RELEASE_NOTES: ${{ inputs.release_notes }}
@@ -202,19 +203,42 @@ jobs:
             exit 1
           fi
 
-          APKSIGNER_BIN="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -n 1 || true)"
-          if [[ -n "$APKSIGNER_BIN" ]]; then
-            "$APKSIGNER_BIN" verify --print-certs "$SOURCE_APK"
-          fi
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          ZIPALIGN_BIN="$(find "$SDK_ROOT/build-tools" -name zipalign -type f 2>/dev/null | sort -V | tail -n 1 || true)"
+          APKSIGNER_BIN="$(find "$SDK_ROOT/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -n 1 || true)"
 
           mkdir -p release-assets
-          cp "$SOURCE_APK" "release-assets/BINACE-SMART-EARN.apk"
-          cp "$SOURCE_APK" "release-assets/binace-smart-earn-v${{ steps.meta.outputs.version_name }}.apk"
+          ALIGNED_APK="$RUNNER_TEMP/app-release-aligned.apk"
+          SIGNED_APK="$RUNNER_TEMP/app-release-signed.apk"
+
+          if [[ -n "$ZIPALIGN_BIN" && -n "$APKSIGNER_BIN" ]]; then
+            "$ZIPALIGN_BIN" -f -p 4 "$SOURCE_APK" "$ALIGNED_APK"
+            "$APKSIGNER_BIN" sign \
+              --ks "$KEYSTORE_PATH" \
+              --ks-key-alias upload \
+              --ks-pass "pass:$STORE_PASSWORD" \
+              --key-pass "pass:$KEY_PASSWORD" \
+              --v1-signing-enabled true \
+              --v2-signing-enabled true \
+              --v3-signing-enabled true \
+              --out "$SIGNED_APK" \
+              "$ALIGNED_APK"
+            "$APKSIGNER_BIN" verify --verbose --print-certs "$SIGNED_APK"
+            cp "$SIGNED_APK" "release-assets/BINACE-SMART-EARN.apk"
+            cp "$SIGNED_APK" "release-assets/binace-smart-earn-v${{ steps.meta.outputs.version_name }}.apk"
+          else
+            if [[ -n "$APKSIGNER_BIN" ]]; then
+              "$APKSIGNER_BIN" verify --print-certs "$SOURCE_APK"
+            fi
+            cp "$SOURCE_APK" "release-assets/BINACE-SMART-EARN.apk"
+            cp "$SOURCE_APK" "release-assets/binace-smart-earn-v${{ steps.meta.outputs.version_name }}.apk"
+          fi
+
           ls -lh release-assets/
 
           NOTES_TEXT="$INPUT_RELEASE_NOTES"
           if [[ -z "${NOTES_TEXT// /}" ]]; then
-            NOTES_TEXT="Automated Android release build verified with unit tests and signed APK packaging."
+            NOTES_TEXT="Automated Android release build verified with unit tests and v1/v2/v3 signed APK packaging."
           fi
 
           cat <<EOF > "$RUNNER_TEMP/release-body.md"
@@ -226,6 +250,8 @@ jobs:
           - **Latest Always (BINACE-SMART-EARN.apk):** https://github.com/${{ github.repository }}/releases/latest/download/BINACE-SMART-EARN.apk
           - **Versioned APK:** https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag_name }}/binace-smart-earn-v${{ steps.meta.outputs.version_name }}.apk
 
+          ### Installation Note
+          - If Android shows *"App not installed"* when installing over an earlier debug or ephemeral CI build, uninstall the previous Binace Smart Earn app first (certificate mismatch protection in Android), then install the downloaded APK.
           - Signing mode: \`${{ steps.signing.outputs.signing_mode }}\`
           - Firebase config: \`${{ steps.envsetup.outputs.google_services_mode }}\`
           - Official Website: https://binacesmartearn.online

@@ -297,6 +297,320 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["adminUid", "adminEmail", "action", "targetCollection", "targetId", "details", "createdAt"]
+    },
+    "SupportAgent": {
+      "title": "SupportAgent",
+      "description": "Authorized customer support agent registry and live online/offline presence keyed by UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "support_agent"] },
+        "isActive": { "type": "boolean" },
+        "isOnline": { "type": "boolean" },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role", "isActive", "isOnline", "createdAt", "updatedAt"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Real-time customer support conversation/ticket supporting live chat, offline tickets, categories, assignment, typing, and unread counts.",
+      "type": "object",
+      "properties": {
+        "ticketId": { "type": "string" },
+        "userUid": { "type": "string" },
+        "username": { "type": "string" },
+        "userName": { "type": "string" },
+        "category": { "type": "string", "enum": ["deposits", "withdrawals", "daily_tasks", "login", "referrals", "payments"] },
+        "subject": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "pending", "resolved"] },
+        "isOfflineTicket": { "type": "boolean" },
+        "assignedAgentUid": { "type": "string" },
+        "assignedAgentName": { "type": "string" },
+        "lastMessageText": { "type": "string" },
+        "lastMessageSenderRole": { "type": "string", "enum": ["user", "agent"] },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "userIsTyping": { "type": "boolean" },
+        "agentIsTyping": { "type": "boolean" },
+        "agentTypingName": { "type": "string" },
+        "unreadByUserCount": { "type": "integer" },
+        "unreadByAgentCount": { "type": "integer" },
+        "userLastReadAt": { "type": "string", "format": "date-time" },
+        "agentLastReadAt": { "type": "string", "format": "date-time" },
+        "resolvedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ticketId", "userUid", "username", "userName", "category", "subject",
+        "status", "isOfflineTicket", "assignedAgentUid", "assignedAgentName",
+        "lastMessageText", "lastMessageSenderRole", "lastMessageAt",
+        "userIsTyping", "agentIsTyping", "unreadByUserCount", "unreadByAgentCount",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "SupportMessage": {
+      "title": "SupportMessage",
+      "description": "Real-time text and image support message inside a ticket.",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string" },
+        "ticketId": { "type": "string" },
+        "ticketOwnerUid": { "type": "string" },
+        "senderUid": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string", "enum": ["user", "agent"] },
+        "type": { "type": "string", "enum": ["text", "image"] },
+        "text": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "imageStoragePath": { "type": "string" },
+        "imageBase64": { "type": "string" },
+        "readByUser": { "type": "boolean" },
+        "readByAgent": { "type": "boolean" },
+        "readAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "messageId", "ticketId", "ticketOwnerUid", "senderUid", "senderName",
+        "senderRole", "type", "text", "readByUser", "readByAgent", "createdAt"
+      ]
+    },
+    "UserDevice": {
+      "title": "UserDevice",
+      "description": "Private FCM device registration token keyed by user UID for push notifications.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "fcmToken": { "type": "string" },
+        "platform": { "type": "string" },
+        "notificationsEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "fcmToken", "platform", "notificationsEnabled", "updatedAt"]
+    },
+    "VipTierConfig": {
+      "title": "VipTierConfig",
+      "description": "Admin-configurable VIP membership level thresholds and loyalty benefits (Bronze to Diamond).",
+      "type": "object",
+      "properties": {
+        "levelKey": { "type": "string", "enum": ["bronze", "silver", "gold", "platinum", "diamond"] },
+        "tierName": { "type": "string" },
+        "tierOrder": { "type": "integer" },
+        "minVerifiedDepositsPkr": { "type": "number" },
+        "minCompletedTasks": { "type": "integer" },
+        "minQualifiedReferrals": { "type": "integer" },
+        "taskBonusPercent": { "type": "integer" },
+        "prioritySupportLabel": { "type": "string" },
+        "benefits": { "type": "array", "items": { "type": "string" } },
+        "isActive": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "levelKey", "tierName", "tierOrder", "minVerifiedDepositsPkr",
+        "minCompletedTasks", "minQualifiedReferrals", "taskBonusPercent",
+        "prioritySupportLabel", "benefits", "isActive", "updatedAt"
+      ]
+    },
+    "VipMembership": {
+      "title": "VipMembership",
+      "description": "Server-validated user VIP membership level and eligibility progress.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "currentLevel": { "type": "string", "enum": ["bronze", "silver", "gold", "platinum", "diamond"] },
+        "currentTierName": { "type": "string" },
+        "tierOrder": { "type": "integer" },
+        "verifiedDepositTotal": { "type": "number" },
+        "completedTasksTotal": { "type": "integer" },
+        "qualifiedReferralsCount": { "type": "integer" },
+        "progressPercent": { "type": "integer" },
+        "nextLevelKey": { "type": "string" },
+        "assignedBy": { "type": "string", "enum": ["system_auto", "admin_override"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid", "username", "currentLevel", "currentTierName", "tierOrder",
+        "verifiedDepositTotal", "completedTasksTotal", "qualifiedReferralsCount",
+        "progressPercent", "nextLevelKey", "assignedBy", "updatedAt"
+      ]
+    },
+    "VipHistoryRecord": {
+      "title": "VipHistoryRecord",
+      "description": "Immutable VIP tier upgrade or admin adjustment history record.",
+      "type": "object",
+      "properties": {
+        "historyId": { "type": "string" },
+        "uid": { "type": "string" },
+        "previousLevel": { "type": "string" },
+        "newLevel": { "type": "string" },
+        "reason": { "type": "string" },
+        "source": { "type": "string", "enum": ["server_auto", "admin"] },
+        "changedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["historyId", "uid", "previousLevel", "newLevel", "reason", "source", "changedBy", "createdAt"]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Public-safe verified activity ranking record without private PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "vipLevel": { "type": "string", "enum": ["bronze", "silver", "gold", "platinum", "diamond"] },
+        "isVerified": { "type": "boolean" },
+        "dailyPoints": { "type": "number" },
+        "dailyDateKey": { "type": "string" },
+        "weeklyPoints": { "type": "number" },
+        "weekKey": { "type": "string" },
+        "monthlyPoints": { "type": "number" },
+        "monthKey": { "type": "string" },
+        "allTimeTaskPoints": { "type": "number" },
+        "completedTasksCount": { "type": "integer" },
+        "qualifiedReferralsCount": { "type": "integer" },
+        "verifiedActivityScore": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid", "username", "displayName", "vipLevel", "isVerified",
+        "dailyPoints", "dailyDateKey", "weeklyPoints", "weekKey", "monthlyPoints", "monthKey",
+        "allTimeTaskPoints", "completedTasksCount", "qualifiedReferralsCount",
+        "verifiedActivityScore", "updatedAt"
+      ]
+    },
+    "LeaderboardPrize": {
+      "title": "LeaderboardPrize",
+      "description": "Admin-configurable promotional leaderboard prize tier.",
+      "type": "object",
+      "properties": {
+        "prizeId": { "type": "string" },
+        "periodType": { "type": "string", "enum": ["daily", "weekly", "monthly", "referrals", "vip"] },
+        "rankFrom": { "type": "integer" },
+        "rankTo": { "type": "integer" },
+        "title": { "type": "string" },
+        "rewardDescription": { "type": "string" },
+        "rewardAmountPkr": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["prizeId", "periodType", "rankFrom", "rankTo", "title", "rewardDescription", "rewardAmountPkr", "isActive", "updatedAt"]
+    },
+    "UserNotification": {
+      "title": "UserNotification",
+      "description": "Real-time per-user in-app notification record.",
+      "type": "object",
+      "properties": {
+        "notificationId": { "type": "string" },
+        "uid": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "category": { "type": "string", "enum": ["system", "vip", "leaderboard", "security", "wallet", "support", "announcement"] },
+        "isRead": { "type": "boolean" },
+        "readAt": { "type": "string", "format": "date-time" },
+        "referenceId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["notificationId", "uid", "title", "body", "category", "isRead", "createdAt"]
+    },
+    "AnnouncementItem": {
+      "title": "AnnouncementItem",
+      "description": "Admin broadcast and scheduled platform announcement.",
+      "type": "object",
+      "properties": {
+        "announcementId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "category": { "type": "string", "enum": ["announcement", "promotion", "security", "maintenance"] },
+        "status": { "type": "string", "enum": ["scheduled", "published", "cancelled"] },
+        "scheduledFor": { "type": "string", "format": "date-time" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "sendPushNotification": { "type": "boolean" },
+        "pushDispatched": { "type": "boolean" },
+        "createdByUid": { "type": "string" },
+        "createdByEmail": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "announcementId", "title", "body", "category", "status",
+        "sendPushNotification", "pushDispatched", "createdByUid",
+        "createdByEmail", "createdAt", "updatedAt"
+      ]
+    },
+    "SecurityProfile": {
+      "title": "SecurityProfile",
+      "description": "Owner-only security configuration for optional TOTP 2FA, biometrics, and verified withdrawal destination.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "totpEnabled": { "type": "boolean" },
+        "totpSecret": { "type": "string" },
+        "biometricEnabled": { "type": "boolean" },
+        "otpVerified": { "type": "boolean" },
+        "lastOtpVerifiedAt": { "type": "string", "format": "date-time" },
+        "verifiedWithdrawMethod": { "type": "string" },
+        "verifiedWithdrawAccount": { "type": "string" },
+        "verifiedWithdrawHolderName": { "type": "string" },
+        "withdrawalDetailVerified": { "type": "boolean" },
+        "withdrawalDetailVerifiedAt": { "type": "string", "format": "date-time" },
+        "suspiciousAlertActive": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid", "totpEnabled", "biometricEnabled", "otpVerified",
+        "withdrawalDetailVerified", "suspiciousAlertActive", "updatedAt"
+      ]
+    },
+    "SecurityDeviceSession": {
+      "title": "SecurityDeviceSession",
+      "description": "Tracked device session with trust status, suspicious login detection, and remote revocation.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "uid": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "manufacturer": { "type": "string" },
+        "osVersion": { "type": "string" },
+        "appVersion": { "type": "string" },
+        "timezoneId": { "type": "string" },
+        "localeCode": { "type": "string" },
+        "isTrusted": { "type": "boolean" },
+        "isSuspicious": { "type": "boolean" },
+        "suspiciousReason": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "revoked"] },
+        "firstSeenAt": { "type": "string", "format": "date-time" },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "revokedAt": { "type": "string", "format": "date-time" },
+        "revokedBy": { "type": "string" }
+      },
+      "required": [
+        "sessionId", "uid", "deviceId", "deviceName", "osVersion", "appVersion",
+        "isTrusted", "isSuspicious", "status", "firstSeenAt", "lastActiveAt"
+      ]
+    },
+    "SecurityEvent": {
+      "title": "SecurityEvent",
+      "description": "Immutable account security activity and suspicious login log.",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string" },
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "eventType": { "type": "string" },
+        "title": { "type": "string" },
+        "details": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
+        "actorUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["eventId", "uid", "username", "eventType", "title", "details", "severity", "actorUid", "createdAt"]
     }
   },
   "firestore": {
@@ -359,6 +673,62 @@
     "/adminLogs/{logId}": {
       "schema": { "$ref": "#/entities/AdminLog" },
       "description": "Immutable admin audit logs"
+    },
+    "/supportAgents/{uid}": {
+      "schema": { "$ref": "#/entities/SupportAgent" },
+      "description": "Authorized customer support agents and online availability"
+    },
+    "/supportTickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/SupportTicket" },
+      "description": "Real-time customer support conversations and offline tickets"
+    },
+    "/supportTickets/{ticketId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/SupportMessage" },
+      "description": "Messages belonging to a support ticket"
+    },
+    "/userDevices/{uid}": {
+      "schema": { "$ref": "#/entities/UserDevice" },
+      "description": "Private FCM device tokens for push notifications"
+    },
+    "/vipConfigs/{levelKey}": {
+      "schema": { "$ref": "#/entities/VipTierConfig" },
+      "description": "Admin-configurable VIP membership levels"
+    },
+    "/vipMemberships/{uid}": {
+      "schema": { "$ref": "#/entities/VipMembership" },
+      "description": "Server-validated user VIP memberships"
+    },
+    "/vipHistory/{historyId}": {
+      "schema": { "$ref": "#/entities/VipHistoryRecord" },
+      "description": "VIP membership history log"
+    },
+    "/leaderboardEntries/{uid}": {
+      "schema": { "$ref": "#/entities/LeaderboardEntry" },
+      "description": "Public-safe verified leaderboard rankings"
+    },
+    "/leaderboardPrizes/{prizeId}": {
+      "schema": { "$ref": "#/entities/LeaderboardPrize" },
+      "description": "Configurable promotional leaderboard prizes"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/UserNotification" },
+      "description": "Per-user real-time notifications"
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/AnnouncementItem" },
+      "description": "Admin broadcasts and scheduled announcements"
+    },
+    "/securityProfiles/{uid}": {
+      "schema": { "$ref": "#/entities/SecurityProfile" },
+      "description": "Private user security settings (2FA, biometrics, verified withdrawal details)"
+    },
+    "/securityDevices/{sessionId}": {
+      "schema": { "$ref": "#/entities/SecurityDeviceSession" },
+      "description": "Registered devices and active sessions"
+    },
+    "/securityEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/SecurityEvent" },
+      "description": "Security history and suspicious login events"
     }
   }
 }

@@ -755,3 +755,664 @@ test("Global Settings: signed-in read, admin-only write with optional GitHub rel
   await assertSucceeds(aliceDb.collection("settings").doc("global").get());
 });
 
+test("Live Customer Support: RBAC multi-agent isolation, tickets, text/image messages, read receipts, typing, and FCM devices", async () => {
+  const AGENT_UID = "agent_uid_777";
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const agentDb = testEnv.authenticatedContext(AGENT_UID).firestore();
+  const adminDb = testEnv
+    .authenticatedContext(ADMIN_UID, { email: ADMIN_EMAIL, email_verified: true })
+    .firestore();
+
+  // Unauthenticated access denied
+  await assertFails(unauthDb.collection("supportAgents").get());
+  await assertFails(unauthDb.collection("supportTickets").get());
+  await assertFails(unauthDb.collection("userDevices").doc(ALICE_UID).get());
+
+  // Non-admin user cannot promote themselves to supportAgent
+  await assertFails(
+    aliceDb.collection("supportAgents").doc(ALICE_UID).set({
+      uid: ALICE_UID,
+      displayName: "Rogue Agent",
+      role: "support_agent",
+      isActive: true,
+      isOnline: true,
+      lastActiveAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Admin registers a verified support agent (non-admin account)
+  await assertSucceeds(
+    adminDb.collection("supportAgents").doc(AGENT_UID).set({
+      uid: AGENT_UID,
+      displayName: "Sara Support",
+      role: "support_agent",
+      isActive: true,
+      isOnline: false,
+      lastActiveAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Agent can toggle their own online status (only allowed keys)
+  await assertSucceeds(
+    agentDb.collection("supportAgents").doc(AGENT_UID).update({
+      isOnline: true,
+      lastActiveAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Agent cannot escalate role or rename themselves
+  await assertFails(
+    agentDb.collection("supportAgents").doc(AGENT_UID).update({
+      role: "admin",
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Signed-in users can read online support agents list (no PII stored here)
+  await assertSucceeds(aliceDb.collection("supportAgents").get());
+
+  // Alice creates a valid support ticket (cannot spoof assignedAgentUid or status != open)
+  const ticketId = "SUP-ALICE001";
+  await assertFails(
+    aliceDb.collection("supportTickets").doc(ticketId).set({
+      ticketId,
+      userUid: ALICE_UID,
+      username: "alice",
+      userName: "Alice Full",
+      category: "deposits",
+      subject: "Deposit receipt review",
+      status: "resolved",
+      isOfflineTicket: false,
+      assignedAgentUid: AGENT_UID,
+      assignedAgentName: "Sara Support",
+      lastMessageText: "Help please",
+      lastMessageSenderRole: "user",
+      lastMessageAt: serverTimestamp(),
+      userIsTyping: false,
+      agentIsTyping: false,
+      unreadByUserCount: 0,
+      unreadByAgentCount: 1,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  await assertSucceeds(
+    aliceDb.collection("supportTickets").doc(ticketId).set({
+      ticketId,
+      userUid: ALICE_UID,
+      username: "alice",
+      userName: "Alice Full",
+      category: "deposits",
+      subject: "Deposit receipt review",
+      status: "open",
+      isOfflineTicket: false,
+      assignedAgentUid: "",
+      assignedAgentName: "",
+      lastMessageText: "Please check my EasyPaisa receipt.",
+      lastMessageSenderRole: "user",
+      lastMessageAt: serverTimestamp(),
+      userIsTyping: false,
+      agentIsTyping: false,
+      unreadByUserCount: 0,
+      unreadByAgentCount: 1,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Alice sends initial user text message
+  const msg1Id = "MSG-ALICE001";
+  await assertSucceeds(
+    aliceDb
+      .collection("supportTickets")
+      .doc(ticketId)
+      .collection("messages")
+      .doc(msg1Id)
+      .set({
+        messageId: msg1Id,
+        ticketId,
+        ticketOwnerUid: ALICE_UID,
+        senderUid: ALICE_UID,
+        senderName: "Alice Full",
+        senderRole: "user",
+        type: "text",
+        text: "Please check my EasyPaisa receipt.",
+        readByUser: true,
+        readByAgent: false,
+        createdAt: serverTimestamp(),
+      })
+  );
+
+  // Alice cannot spoof an agent message
+  await assertFails(
+    aliceDb
+      .collection("supportTickets")
+      .doc(ticketId)
+      .collection("messages")
+      .doc("MSG-SPOOF01")
+      .set({
+        messageId: "MSG-SPOOF01",
+        ticketId,
+        ticketOwnerUid: ALICE_UID,
+        senderUid: ALICE_UID,
+        senderName: "Fake Agent",
+        senderRole: "agent",
+        type: "text",
+        text: "Approved!",
+        readByUser: false,
+        readByAgent: true,
+        createdAt: serverTimestamp(),
+      })
+  );
+
+  // Bob CANNOT read or list Alice's tickets or messages
+  await assertFails(bobDb.collection("supportTickets").doc(ticketId).get());
+  await assertFails(bobDb.collection("supportTickets").where("userUid", "==", ALICE_UID).get());
+  await assertFails(
+    bobDb.collection("supportTickets").doc(ticketId).collection("messages").doc(msg1Id).get()
+  );
+  await assertFails(
+    bobDb.collection("supportTickets").doc(ticketId).collection("messages").where("ticketOwnerUid", "==", ALICE_UID).get()
+  );
+
+  // Alice CAN query her own tickets and messages (matching Kotlin query filters)
+  await assertSucceeds(aliceDb.collection("supportTickets").where("userUid", "==", ALICE_UID).get());
+  await assertSucceeds(
+    aliceDb
+      .collection("supportTickets")
+      .doc(ticketId)
+      .collection("messages")
+      .where("ticketOwnerUid", "==", ALICE_UID)
+      .get()
+  );
+
+  // Assigned/authorized support agent CAN list tickets, assign to self, update status/typing, reply with image, and mark read
+  await assertSucceeds(agentDb.collection("supportTickets").get());
+  await assertSucceeds(
+    agentDb.collection("supportTickets").doc(ticketId).collection("messages").get()
+  );
+  await assertSucceeds(
+    agentDb.collection("supportTickets").doc(ticketId).update({
+      assignedAgentUid: AGENT_UID,
+      assignedAgentName: "Sara Support",
+      status: "pending",
+      agentIsTyping: true,
+      agentTypingName: "Sara Support",
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Agent marks user's message as read and sends an image reply
+  await assertSucceeds(
+    agentDb
+      .collection("supportTickets")
+      .doc(ticketId)
+      .collection("messages")
+      .doc(msg1Id)
+      .update({
+        readByAgent: true,
+        readAt: serverTimestamp(),
+      })
+  );
+
+  const msg2Id = "MSG-AGENT002";
+  await assertSucceeds(
+    agentDb
+      .collection("supportTickets")
+      .doc(ticketId)
+      .collection("messages")
+      .doc(msg2Id)
+      .set({
+        messageId: msg2Id,
+        ticketId,
+        ticketOwnerUid: ALICE_UID,
+        senderUid: AGENT_UID,
+        senderName: "Sara Support",
+        senderRole: "agent",
+        type: "image",
+        text: "Here is your verification confirmation.",
+        imageUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/confirm.jpg",
+        imageStoragePath: `support_attachments/${AGENT_UID}/${ticketId}/${msg2Id}.jpg`,
+        readByUser: false,
+        readByAgent: true,
+        createdAt: serverTimestamp(),
+      })
+  );
+
+  // Agent resolves ticket
+  await assertSucceeds(
+    agentDb.collection("supportTickets").doc(ticketId).update({
+      status: "resolved",
+      agentIsTyping: false,
+      lastMessageText: "Here is your verification confirmation.",
+      lastMessageSenderRole: "agent",
+      lastMessageAt: serverTimestamp(),
+      unreadByUserCount: 1,
+      unreadByAgentCount: 0,
+      resolvedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Alice marks agent reply read and reopens ticket if needed
+  await assertSucceeds(
+    aliceDb
+      .collection("supportTickets")
+      .doc(ticketId)
+      .collection("messages")
+      .doc(msg2Id)
+      .update({
+        readByUser: true,
+        readAt: serverTimestamp(),
+      })
+  );
+  await assertSucceeds(
+    aliceDb.collection("supportTickets").doc(ticketId).update({
+      unreadByUserCount: 0,
+      userLastReadAt: serverTimestamp(),
+      status: "open",
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Alice cannot alter assignedAgentUid on her own ticket
+  await assertFails(
+    aliceDb.collection("supportTickets").doc(ticketId).update({
+      assignedAgentUid: BOB_UID,
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // FCM device token registration is strictly owner-only
+  await assertSucceeds(
+    aliceDb.collection("userDevices").doc(ALICE_UID).set({
+      uid: ALICE_UID,
+      fcmToken: "fcm_test_token_1234567890_abcdef",
+      platform: "android",
+      notificationsEnabled: true,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(bobDb.collection("userDevices").doc(ALICE_UID).get());
+  await assertFails(adminDb.collection("userDevices").doc(ALICE_UID).get());
+});
+
+test("Live Support Atomic Batch Create: simultaneous batch create of ticket + first message succeeds", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const ticketId = "SUP-BATCH01";
+  const msgId = "MSG-BATCH01";
+  const batch = aliceDb.batch();
+  batch.set(aliceDb.collection("supportTickets").doc(ticketId), {
+    ticketId,
+    userUid: ALICE_UID,
+    username: "alice",
+    userName: "Alice Full",
+    category: "payments",
+    subject: "Batch ticket creation test",
+    status: "open",
+    isOfflineTicket: false,
+    assignedAgentUid: "",
+    assignedAgentName: "",
+    lastMessageText: "Hello live support",
+    lastMessageSenderRole: "user",
+    lastMessageAt: serverTimestamp(),
+    userIsTyping: false,
+    agentIsTyping: false,
+    unreadByUserCount: 0,
+    unreadByAgentCount: 1,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(
+    aliceDb.collection("supportTickets").doc(ticketId).collection("messages").doc(msgId),
+    {
+      messageId: msgId,
+      ticketId,
+      ticketOwnerUid: ALICE_UID,
+      senderUid: ALICE_UID,
+      senderName: "Alice Full",
+      senderRole: "user",
+      type: "text",
+      text: "Hello live support",
+      readByUser: true,
+      readByAgent: false,
+      createdAt: serverTimestamp(),
+    }
+  );
+  await assertSucceeds(batch.commit());
+});
+
+test("VIP Membership: admin manages configs & overrides, users initialized bronze only, anti-tampering & immutable history", async () => {
+  const adminDb = testEnv
+    .authenticatedContext(ADMIN_UID, { email: ADMIN_EMAIL, email_verified: true })
+    .firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+
+  const goldConfig = {
+    levelKey: "gold",
+    tierName: "Gold",
+    tierOrder: 3,
+    minVerifiedDepositsPkr: 5000,
+    minCompletedTasks: 25,
+    minQualifiedReferrals: 2,
+    taskBonusPercent: 10,
+    prioritySupportLabel: "Gold Fast-Track Support",
+    benefits: ["Gold VIP crest", "Fast-track Live Support"],
+    isActive: true,
+    updatedAt: serverTimestamp(),
+  };
+
+  // Non-admin cannot create VIP config
+  await assertFails(aliceDb.collection("vipConfigs").doc("gold").set(goldConfig));
+  await assertSucceeds(adminDb.collection("vipConfigs").doc("gold").set(goldConfig));
+  await assertSucceeds(aliceDb.collection("vipConfigs").get());
+
+  // User cannot create pre-elevated membership
+  await assertFails(
+    aliceDb.collection("vipMemberships").doc(ALICE_UID).set({
+      uid: ALICE_UID,
+      username: "alice",
+      currentLevel: "diamond",
+      currentTierName: "Diamond",
+      tierOrder: 5,
+      verifiedDepositTotal: 99999,
+      completedTasksTotal: 999,
+      qualifiedReferralsCount: 50,
+      progressPercent: 100,
+      nextLevelKey: "",
+      assignedBy: "system_auto",
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // User CAN initialize default Bronze zero-progress membership
+  await assertSucceeds(
+    aliceDb.collection("vipMemberships").doc(ALICE_UID).set({
+      uid: ALICE_UID,
+      username: "alice",
+      currentLevel: "bronze",
+      currentTierName: "Bronze",
+      tierOrder: 1,
+      verifiedDepositTotal: 0,
+      completedTasksTotal: 0,
+      qualifiedReferralsCount: 0,
+      progressPercent: 0,
+      nextLevelKey: "silver",
+      assignedBy: "system_auto",
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // User cannot update or elevate own VIP membership; Bob cannot read Alice's VIP membership
+  await assertFails(
+    aliceDb.collection("vipMemberships").doc(ALICE_UID).update({
+      currentLevel: "gold",
+      tierOrder: 3,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(bobDb.collection("vipMemberships").doc(ALICE_UID).get());
+
+  // Admin can override Alice's VIP membership and append immutable VIP history
+  await assertSucceeds(
+    adminDb.collection("vipMemberships").doc(ALICE_UID).update({
+      currentLevel: "gold",
+      currentTierName: "Gold",
+      tierOrder: 3,
+      assignedBy: "admin_override",
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    adminDb.collection("vipHistory").doc("VIPH-001").set({
+      historyId: "VIPH-001",
+      uid: ALICE_UID,
+      previousLevel: "bronze",
+      newLevel: "gold",
+      reason: "Admin verified VIP promotion",
+      source: "admin",
+      changedBy: ADMIN_EMAIL,
+      createdAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(aliceDb.collection("vipHistory").where("uid", "==", ALICE_UID).get());
+  await assertFails(bobDb.collection("vipHistory").where("uid", "==", ALICE_UID).get());
+  await assertFails(adminDb.collection("vipHistory").doc("VIPH-001").delete());
+});
+
+test("Global Leaderboard: zero-score init, anti-cheat blocking self-score inflation, admin prizes", async () => {
+  const adminDb = testEnv
+    .authenticatedContext(ADMIN_UID, { email: ADMIN_EMAIL, email_verified: true })
+    .firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+
+  // Cheat attempt by user fails
+  await assertFails(
+    aliceDb.collection("leaderboardEntries").doc(ALICE_UID).set({
+      uid: ALICE_UID,
+      username: "alice",
+      displayName: "Alice",
+      vipLevel: "bronze",
+      isVerified: false,
+      dailyPoints: 5000,
+      dailyDateKey: "2026-11-17",
+      weeklyPoints: 5000,
+      weekKey: "2026-W47",
+      monthlyPoints: 5000,
+      monthKey: "2026-11",
+      allTimeTaskPoints: 5000,
+      completedTasksCount: 50,
+      qualifiedReferralsCount: 10,
+      verifiedActivityScore: 99999,
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Zero-score initialization succeeds & signed-in users can view rankings
+  await assertSucceeds(
+    aliceDb.collection("leaderboardEntries").doc(ALICE_UID).set({
+      uid: ALICE_UID,
+      username: "alice",
+      displayName: "Alice",
+      vipLevel: "bronze",
+      isVerified: false,
+      dailyPoints: 0,
+      dailyDateKey: "2026-11-17",
+      weeklyPoints: 0,
+      weekKey: "2026-W47",
+      monthlyPoints: 0,
+      monthKey: "2026-11",
+      allTimeTaskPoints: 0,
+      completedTasksCount: 0,
+      qualifiedReferralsCount: 0,
+      verifiedActivityScore: 0,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(bobDb.collection("leaderboardEntries").get());
+
+  // User cannot inflate score via update
+  await assertFails(
+    aliceDb.collection("leaderboardEntries").doc(ALICE_UID).update({
+      verifiedActivityScore: 1000,
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Admin writes promotional prize config
+  const prizeDoc = {
+    prizeId: "PRIZE-WEEKLY-TOP1",
+    periodType: "weekly",
+    rankFrom: 1,
+    rankTo: 3,
+    title: "Weekly Verified Champion Pool",
+    rewardDescription: "Promotional community bonus for top verified performers (not guaranteed returns).",
+    rewardAmountPkr: 1500,
+    isActive: true,
+    updatedAt: serverTimestamp(),
+  };
+  await assertFails(aliceDb.collection("leaderboardPrizes").doc("PRIZE-WEEKLY-TOP1").set(prizeDoc));
+  await assertSucceeds(adminDb.collection("leaderboardPrizes").doc("PRIZE-WEEKLY-TOP1").set(prizeDoc));
+  await assertSucceeds(aliceDb.collection("leaderboardPrizes").get());
+});
+
+test("Notification Center & Announcements: read-only user receipt marking, admin broadcast & scheduled privacy", async () => {
+  const adminDb = testEnv
+    .authenticatedContext(ADMIN_UID, { email: ADMIN_EMAIL, email_verified: true })
+    .firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+
+  // Only admin creates direct notifications
+  const notifDoc = {
+    notificationId: "NTF-001",
+    uid: ALICE_UID,
+    title: "VIP Milestone",
+    body: "You are 2 tasks away from Silver VIP.",
+    category: "vip",
+    isRead: false,
+    referenceId: "",
+    createdAt: serverTimestamp(),
+  };
+  await assertFails(aliceDb.collection("notifications").doc("NTF-001").set(notifDoc));
+  await assertSucceeds(adminDb.collection("notifications").doc("NTF-001").set(notifDoc));
+
+  // Alice reads & marks own notification read; cannot tamper body; Bob cannot read Alice's notifications
+  await assertSucceeds(aliceDb.collection("notifications").where("uid", "==", ALICE_UID).get());
+  await assertFails(bobDb.collection("notifications").doc("NTF-001").get());
+  await assertFails(
+    aliceDb.collection("notifications").doc("NTF-001").update({
+      body: "PKR 999999 bonus",
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    aliceDb.collection("notifications").doc("NTF-001").update({
+      isRead: true,
+      readAt: serverTimestamp(),
+    })
+  );
+
+  // Scheduled announcements hidden from regular users until published
+  await assertSucceeds(
+    adminDb.collection("announcements").doc("ANN-SCHED1").set({
+      announcementId: "ANN-SCHED1",
+      title: "Upcoming Maintenance",
+      body: "Scheduled window tonight.",
+      category: "maintenance",
+      status: "scheduled",
+      scheduledFor: serverTimestamp(),
+      sendPushNotification: true,
+      pushDispatched: false,
+      createdByUid: ADMIN_UID,
+      createdByEmail: ADMIN_EMAIL,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(aliceDb.collection("announcements").doc("ANN-SCHED1").get());
+  await assertSucceeds(
+    adminDb.collection("announcements").doc("ANN-SCHED1").update({
+      status: "published",
+      publishedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(aliceDb.collection("announcements").where("status", "==", "published").get());
+  await assertSucceeds(
+    aliceDb.collection("announcementReads").doc(`${ALICE_UID}_ANN-SCHED1`).set({
+      uid: ALICE_UID,
+      announcementId: "ANN-SCHED1",
+      readAt: serverTimestamp(),
+    })
+  );
+});
+
+test("Account Security: strict owner-only totpSecret isolation, device session management, immutable events, OTP server-only", async () => {
+  const adminDb = testEnv
+    .authenticatedContext(ADMIN_UID, { email: ADMIN_EMAIL, email_verified: true })
+    .firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+
+  // SecurityProfile with TOTP secret is strictly owner-only (even admin cannot read totpSecret)
+  await assertSucceeds(
+    aliceDb.collection("securityProfiles").doc(ALICE_UID).set({
+      uid: ALICE_UID,
+      totpEnabled: true,
+      totpSecret: "JBSWY3DPEHPK3PXP",
+      biometricEnabled: true,
+      otpVerified: true,
+      verifiedWithdrawMethod: "EasyPaisa",
+      verifiedWithdrawAccount: "03001234567",
+      verifiedWithdrawHolderName: "Alice Full",
+      withdrawalDetailVerified: true,
+      suspiciousAlertActive: false,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(aliceDb.collection("securityProfiles").doc(ALICE_UID).get());
+  await assertFails(bobDb.collection("securityProfiles").doc(ALICE_UID).get());
+  await assertFails(adminDb.collection("securityProfiles").doc(ALICE_UID).get());
+
+  // Device session registration + suspicious flag / remote revocation
+  const sessionId = `${ALICE_UID}_DEV-001`;
+  await assertSucceeds(
+    aliceDb.collection("securityDevices").doc(sessionId).set({
+      sessionId,
+      uid: ALICE_UID,
+      deviceId: "DEV-001",
+      deviceName: "Pixel 8",
+      osVersion: "15",
+      appVersion: "1.0.2",
+      timezoneId: "Asia/Karachi",
+      isTrusted: true,
+      isSuspicious: false,
+      status: "active",
+      firstSeenAt: serverTimestamp(),
+      lastActiveAt: serverTimestamp(),
+    })
+  );
+  await assertFails(bobDb.collection("securityDevices").doc(sessionId).get());
+  await assertSucceeds(
+    adminDb.collection("securityDevices").doc(sessionId).update({
+      status: "revoked",
+      revokedAt: serverTimestamp(),
+      revokedBy: ADMIN_EMAIL,
+    })
+  );
+
+  // Security Events are immutable
+  await assertSucceeds(
+    aliceDb.collection("securityEvents").doc("SEC-001").set({
+      eventId: "SEC-001",
+      uid: ALICE_UID,
+      username: "alice",
+      eventType: "TOTP_ENABLED",
+      title: "2FA Enabled",
+      details: "Authenticator app 2FA activated.",
+      severity: "info",
+      actorUid: ALICE_UID,
+      createdAt: serverTimestamp(),
+    })
+  );
+  await assertFails(aliceDb.collection("securityEvents").doc("SEC-001").delete());
+  await assertFails(adminDb.collection("securityEvents").doc("SEC-001").update({ details: "tampered" }));
+  await assertSucceeds(adminDb.collection("securityEvents").get());
+
+  // Security OTP collection is completely inaccessible from client SDKs (Cloud Functions Admin SDK only)
+  await assertFails(aliceDb.collection("securityOtps").doc("OTP-001").get());
+  await assertFails(adminDb.collection("securityOtps").doc("OTP-001").set({ uid: ALICE_UID }));
+});
+
+

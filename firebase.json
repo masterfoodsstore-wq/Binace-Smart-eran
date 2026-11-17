@@ -5,6 +5,15 @@
       "rules": "firestore.rules"
     }
   ],
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default"
+    }
+  ],
   "emulators": {
     "firestore": {
       "host": "127.0.0.1",

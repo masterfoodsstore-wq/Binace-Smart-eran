@@ -28,7 +28,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -60,7 +62,9 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.ApkDownloadState
 import com.example.data.model.AppConstants
 import com.example.data.model.AppUpdateInfo
+import com.example.data.model.SecurityProfile
 import com.example.data.model.UserProfile
+import com.example.data.model.VipLevel
 import com.example.data.model.WalletAccount
 import com.example.ui.components.FintechFormatters
 import com.example.ui.components.StatusPill
@@ -70,6 +74,11 @@ import com.example.ui.components.VerifiedAccountBadge
 fun ProfileScreen(
     profile: UserProfile,
     wallet: WalletAccount? = null,
+    vipLevel: VipLevel = VipLevel.BRONZE,
+    securityProfile: SecurityProfile? = null,
+    supportUnreadCount: Int = 0,
+    onlineAgentsCount: Int = 0,
+    isSupportStaff: Boolean = false,
     isAdmin: Boolean,
     isDarkTheme: Boolean,
     isActionBusy: Boolean,
@@ -81,12 +90,15 @@ fun ProfileScreen(
     onDownloadApk: (String) -> Unit = {},
     onOpenDownloads: (String) -> Unit = {},
     onOpenAdmin: () -> Unit,
+    onOpenVip: () -> Unit = {},
+    onOpenSecurity: () -> Unit = {},
+    onOpenLiveSupport: () -> Unit = {},
+    onOpenSupportConsole: () -> Unit = {},
     onOpenWebsite: () -> Unit = {},
     onOpenSupport: () -> Unit,
     onLogout: () -> Unit
 ) {
     var showEditDialog by remember { mutableStateOf(false) }
-    var showSecurityDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -203,6 +215,15 @@ fun ProfileScreen(
                         if (profile.isVerified && profile.verifiedAt != null) {
                             ProfileInfoRow("Verified Date", FintechFormatters.formatDate(profile.verifiedAt))
                         }
+                        ProfileInfoRow("VIP Tier", "${vipLevel.displayName} Level")
+                        ProfileInfoRow(
+                            "2FA & Biometric Lock",
+                            buildString {
+                                append(if (securityProfile?.totpEnabled == true) "2FA ON" else "2FA OFF")
+                                append(" • ")
+                                append(if (securityProfile?.biometricEnabled == true) "Biometric ON" else "Biometric OFF")
+                            }
+                        )
                         ProfileInfoRow("Account Status", profile.accountStatus.uppercase())
                         ProfileInfoRow("Official Website", AppConstants.OFFICIAL_WEBSITE_DOMAIN)
                     }
@@ -294,7 +315,7 @@ fun ProfileScreen(
                             }
                             is ApkDownloadState.Completed -> {
                                 Text(
-                                    text = "Downloaded ${apkDownloadState.fileName} ✓ Open Downloads to install.",
+                                    text = "Downloaded ${apkDownloadState.fileName} ✓ Open Downloads to install. (If Android shows 'App not installed' over an earlier debug build, uninstall the old app first.)",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -410,7 +431,19 @@ fun ProfileScreen(
                         }
 
                         OutlinedButton(
-                            onClick = { showSecurityDialog = true },
+                            onClick = onOpenVip,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("profile_vip_button")
+                        ) {
+                            Icon(Icons.Default.WorkspacePremium, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("VIP Membership (${vipLevel.displayName})")
+                        }
+
+                        OutlinedButton(
+                            onClick = onOpenSecurity,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp)
@@ -418,7 +451,7 @@ fun ProfileScreen(
                         ) {
                             Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Account Security & Password")
+                            Text("Account Security, 2FA & Devices")
                         }
 
                         OutlinedButton(
@@ -434,15 +467,42 @@ fun ProfileScreen(
                         }
 
                         OutlinedButton(
+                            onClick = onOpenLiveSupport,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("profile_live_support_button")
+                        ) {
+                            Icon(Icons.Default.SupportAgent, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            val badgeSuffix = if (supportUnreadCount > 0) " ($supportUnreadCount unread)" else if (onlineAgentsCount > 0) " (Online)" else ""
+                            Text("Live Customer Support$badgeSuffix")
+                        }
+
+                        if (isSupportStaff && !isAdmin) {
+                            OutlinedButton(
+                                onClick = onOpenSupportConsole,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("profile_support_console_button")
+                            ) {
+                                Icon(Icons.Default.AdminPanelSettings, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Support Agent Console")
+                            }
+                        }
+
+                        OutlinedButton(
                             onClick = onOpenSupport,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp)
                                 .testTag("profile_support_button")
                         ) {
-                            Icon(Icons.Default.SupportAgent, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Customer Support")
+                            Text("WhatsApp Community Channel")
                         }
 
                         Button(
@@ -498,21 +558,6 @@ fun ProfileScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showEditDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (showSecurityDialog) {
-        AlertDialog(
-            onDismissRequest = { showSecurityDialog = false },
-            title = { Text("Google Account Security") },
-            text = {
-                Text(
-                    "Your Binace Smart Earn session is protected by Google Identity & Credential Manager (${profile.email}). Password changes, 2-Step Verification, and recovery options are managed directly in your Google Account security settings."
-                )
-            },
-            confirmButton = {
-                Button(onClick = { showSecurityDialog = false }) { Text("Got It") }
             }
         )
     }

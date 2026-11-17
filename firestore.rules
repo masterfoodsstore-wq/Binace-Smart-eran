@@ -769,5 +769,676 @@ service cloud.firestore {
       allow create: if isValidId(logId) && isAdmin() && isValidAdminLog(incoming()) && incoming().adminUid == request.auth.uid;
       allow update, delete: if false;
     }
+
+    // --- LIVE CUSTOMER SUPPORT SYSTEM ---
+
+    function isSupportStaff() {
+      return isAdmin() || (
+        isSignedIn() &&
+        exists(/databases/$(database)/documents/supportAgents/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/supportAgents/$(request.auth.uid)).data.isActive == true
+      );
+    }
+
+    function isValidSupportAgent(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'isActive', 'isOnline', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'displayName', 'role', 'isActive', 'isOnline', 'lastActiveAt', 'createdAt', 'updatedAt']) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 80 &&
+             data.role in ['admin', 'support_agent'] &&
+             data.isActive is bool &&
+             data.isOnline is bool &&
+             (!('lastActiveAt' in data) || data.lastActiveAt == null || isValidTimestamp(data.lastActiveAt)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSupportTicket(data) {
+      return data.keys().hasAll([
+               'ticketId', 'userUid', 'username', 'userName', 'category', 'subject',
+               'status', 'isOfflineTicket', 'assignedAgentUid', 'assignedAgentName',
+               'lastMessageText', 'lastMessageSenderRole', 'lastMessageAt',
+               'userIsTyping', 'agentIsTyping', 'unreadByUserCount', 'unreadByAgentCount',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'ticketId', 'userUid', 'username', 'userName', 'category', 'subject',
+               'status', 'isOfflineTicket', 'assignedAgentUid', 'assignedAgentName',
+               'lastMessageText', 'lastMessageSenderRole', 'lastMessageAt',
+               'userIsTyping', 'agentIsTyping', 'agentTypingName',
+               'unreadByUserCount', 'unreadByAgentCount',
+               'userLastReadAt', 'agentLastReadAt', 'resolvedAt',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.ticketId is string && isValidId(data.ticketId) &&
+             data.userUid is string && data.userUid.size() >= 1 && data.userUid.size() <= 128 &&
+             data.username is string && data.username.size() >= 2 && data.username.size() <= 40 &&
+             data.userName is string && data.userName.size() >= 2 && data.userName.size() <= 80 &&
+             data.category in ['deposits', 'withdrawals', 'daily_tasks', 'login', 'referrals', 'payments'] &&
+             data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 140 &&
+             data.status in ['open', 'pending', 'resolved'] &&
+             data.isOfflineTicket is bool &&
+             data.assignedAgentUid is string && data.assignedAgentUid.size() <= 128 &&
+             data.assignedAgentName is string && data.assignedAgentName.size() <= 80 &&
+             data.lastMessageText is string && data.lastMessageText.size() <= 500 &&
+             data.lastMessageSenderRole in ['user', 'agent'] &&
+             isValidTimestamp(data.lastMessageAt) &&
+             data.userIsTyping is bool &&
+             data.agentIsTyping is bool &&
+             isOptionalString(data, 'agentTypingName', 80) &&
+             data.unreadByUserCount is int && data.unreadByUserCount >= 0 &&
+             data.unreadByAgentCount is int && data.unreadByAgentCount >= 0 &&
+             (!('userLastReadAt' in data) || data.userLastReadAt == null || isValidTimestamp(data.userLastReadAt)) &&
+             (!('agentLastReadAt' in data) || data.agentLastReadAt == null || isValidTimestamp(data.agentLastReadAt)) &&
+             (!('resolvedAt' in data) || data.resolvedAt == null || isValidTimestamp(data.resolvedAt)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSupportMessage(data) {
+      return data.keys().hasAll([
+               'messageId', 'ticketId', 'ticketOwnerUid', 'senderUid', 'senderName',
+               'senderRole', 'type', 'text', 'readByUser', 'readByAgent', 'createdAt'
+             ]) &&
+             data.keys().hasOnly([
+               'messageId', 'ticketId', 'ticketOwnerUid', 'senderUid', 'senderName',
+               'senderRole', 'type', 'text', 'imageUrl', 'imageStoragePath', 'imageBase64',
+               'readByUser', 'readByAgent', 'readAt', 'createdAt'
+             ]) &&
+             data.messageId is string && isValidId(data.messageId) &&
+             data.ticketId is string && isValidId(data.ticketId) &&
+             data.ticketOwnerUid is string && data.ticketOwnerUid.size() >= 1 && data.ticketOwnerUid.size() <= 128 &&
+             data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128 &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 80 &&
+             data.senderRole in ['user', 'agent'] &&
+             data.type in ['text', 'image'] &&
+             data.text is string && data.text.size() <= 2000 &&
+             isOptionalString(data, 'imageUrl', 1200) &&
+             isOptionalString(data, 'imageStoragePath', 300) &&
+             isOptionalString(data, 'imageBase64', 200000) &&
+             data.readByUser is bool &&
+             data.readByAgent is bool &&
+             (!('readAt' in data) || data.readAt == null || isValidTimestamp(data.readAt)) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidUserDevice(data) {
+      return data.keys().hasAll(['uid', 'fcmToken', 'platform', 'notificationsEnabled', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'fcmToken', 'platform', 'notificationsEnabled', 'updatedAt']) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.fcmToken is string && data.fcmToken.size() >= 10 && data.fcmToken.size() <= 512 &&
+             data.platform in ['android'] &&
+             data.notificationsEnabled is bool &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /supportAgents/{uid} {
+      allow get, list: if isSignedIn();
+      allow create: if isValidId(uid) && isAdmin() && isValidSupportAgent(incoming()) && incoming().uid == uid;
+      allow update: if isValidId(uid) &&
+                       isValidSupportAgent(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().createdAt == existing().createdAt && (
+                         isAdmin() ||
+                         (
+                           isOwner(uid) &&
+                           existing().isActive == true &&
+                           incoming().displayName == existing().displayName &&
+                           incoming().role == existing().role &&
+                           incoming().isActive == existing().isActive &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['isOnline', 'lastActiveAt', 'updatedAt'])
+                         )
+                       );
+      allow delete: if isValidId(uid) && isAdmin();
+    }
+
+    match /supportTickets/{ticketId} {
+      allow get: if isValidId(ticketId) && (isSupportStaff() || (isSignedIn() && resource != null && existing().userUid == request.auth.uid));
+      allow list: if isSupportStaff() || (isSignedIn() && resource.data.userUid == request.auth.uid);
+
+      allow create: if isValidId(ticketId) &&
+                       isSignedIn() &&
+                       isValidSupportTicket(incoming()) &&
+                       incoming().ticketId == ticketId &&
+                       incoming().userUid == request.auth.uid &&
+                       incoming().status == 'open' &&
+                       incoming().assignedAgentUid == '' &&
+                       incoming().assignedAgentName == '' &&
+                       incoming().unreadByUserCount == 0;
+
+      allow update: if isValidId(ticketId) &&
+                       isValidSupportTicket(incoming()) &&
+                       incoming().ticketId == existing().ticketId &&
+                       incoming().userUid == existing().userUid &&
+                       incoming().createdAt == existing().createdAt && (
+                         (
+                           isSupportStaff() &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'status', 'assignedAgentUid', 'assignedAgentName',
+                             'lastMessageText', 'lastMessageSenderRole', 'lastMessageAt',
+                             'agentIsTyping', 'agentTypingName',
+                             'unreadByUserCount', 'unreadByAgentCount', 'agentLastReadAt',
+                             'resolvedAt', 'updatedAt'
+                           ])
+                         ) ||
+                         (
+                           isOwner(existing().userUid) &&
+                           (incoming().status == existing().status || (existing().status == 'resolved' && incoming().status == 'open')) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'status', 'isOfflineTicket', 'lastMessageText', 'lastMessageSenderRole',
+                             'lastMessageAt', 'userIsTyping', 'unreadByUserCount', 'unreadByAgentCount',
+                             'userLastReadAt', 'updatedAt'
+                           ])
+                         )
+                       );
+
+      allow delete: if isValidId(ticketId) && isAdmin();
+
+      match /messages/{messageId} {
+        allow get: if isValidId(ticketId) && isValidId(messageId) && (
+          isSupportStaff() ||
+          (isSignedIn() && resource != null && existing().ticketOwnerUid == request.auth.uid)
+        );
+        allow list: if isSupportStaff() || (isSignedIn() && resource.data.ticketOwnerUid == request.auth.uid);
+
+        allow create: if isValidId(ticketId) &&
+                         isValidId(messageId) &&
+                         isSignedIn() &&
+                         isValidSupportMessage(incoming()) &&
+                         incoming().messageId == messageId &&
+                         incoming().ticketId == ticketId &&
+                         incoming().senderUid == request.auth.uid &&
+                         existsAfter(/databases/$(database)/documents/supportTickets/$(ticketId)) &&
+                         getAfter(/databases/$(database)/documents/supportTickets/$(ticketId)).data.userUid == incoming().ticketOwnerUid &&
+                         (incoming().type == 'text' || (incoming().imageUrl is string && incoming().imageUrl.size() > 0) || (incoming().imageBase64 is string && incoming().imageBase64.size() > 0)) &&
+                         (
+                           (
+                             incoming().senderRole == 'user' &&
+                             incoming().ticketOwnerUid == request.auth.uid &&
+                             incoming().readByUser == true &&
+                             incoming().readByAgent == false
+                           ) ||
+                           (
+                             incoming().senderRole == 'agent' &&
+                             isSupportStaff() &&
+                             incoming().readByAgent == true &&
+                             incoming().readByUser == false
+                           )
+                         );
+
+        allow update: if isValidId(ticketId) &&
+                         isValidId(messageId) &&
+                         isValidSupportMessage(incoming()) &&
+                         incoming().messageId == existing().messageId &&
+                         incoming().ticketId == existing().ticketId &&
+                         incoming().ticketOwnerUid == existing().ticketOwnerUid &&
+                         incoming().senderUid == existing().senderUid &&
+                         incoming().senderRole == existing().senderRole &&
+                         incoming().type == existing().type &&
+                         incoming().text == existing().text &&
+                         incoming().createdAt == existing().createdAt && (
+                           (
+                             isOwner(existing().ticketOwnerUid) &&
+                             incoming().readByUser == true &&
+                             incoming().readByAgent == existing().readByAgent &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['readByUser', 'readAt'])
+                           ) ||
+                           (
+                             isSupportStaff() &&
+                             incoming().readByAgent == true &&
+                             incoming().readByUser == existing().readByUser &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['readByAgent', 'readAt'])
+                           )
+                         );
+
+        allow delete: if isValidId(ticketId) && isValidId(messageId) && isAdmin();
+      }
+    }
+
+    match /userDevices/{uid} {
+      allow get: if isValidId(uid) && isOwner(uid);
+      allow list: if false;
+      allow create, update: if isValidId(uid) &&
+                               isOwner(uid) &&
+                               isValidUserDevice(incoming()) &&
+                               incoming().uid == uid;
+      allow delete: if isValidId(uid) && isOwner(uid);
+    }
+
+    // --- 1. VIP MEMBERSHIP SYSTEM ---
+
+    function isValidVipTierConfig(data) {
+      return data.keys().hasAll([
+               'levelKey', 'tierName', 'tierOrder', 'minVerifiedDepositsPkr',
+               'minCompletedTasks', 'minQualifiedReferrals', 'taskBonusPercent',
+               'prioritySupportLabel', 'benefits', 'isActive', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'levelKey', 'tierName', 'tierOrder', 'minVerifiedDepositsPkr',
+               'minCompletedTasks', 'minQualifiedReferrals', 'taskBonusPercent',
+               'prioritySupportLabel', 'benefits', 'isActive', 'updatedAt'
+             ]) &&
+             data.levelKey in ['bronze', 'silver', 'gold', 'platinum', 'diamond'] &&
+             data.tierName is string && data.tierName.size() >= 2 && data.tierName.size() <= 40 &&
+             data.tierOrder is int && data.tierOrder >= 1 && data.tierOrder <= 5 &&
+             data.minVerifiedDepositsPkr is number && data.minVerifiedDepositsPkr >= 0 &&
+             data.minCompletedTasks is int && data.minCompletedTasks >= 0 &&
+             data.minQualifiedReferrals is int && data.minQualifiedReferrals >= 0 &&
+             data.taskBonusPercent is int && data.taskBonusPercent >= 0 && data.taskBonusPercent <= 100 &&
+             data.prioritySupportLabel is string && data.prioritySupportLabel.size() >= 2 && data.prioritySupportLabel.size() <= 60 &&
+             data.benefits is list && data.benefits.size() <= 12 &&
+             data.isActive is bool &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidVipMembership(data) {
+      return data.keys().hasAll([
+               'uid', 'username', 'currentLevel', 'currentTierName', 'tierOrder',
+               'verifiedDepositTotal', 'completedTasksTotal', 'qualifiedReferralsCount',
+               'progressPercent', 'nextLevelKey', 'assignedBy', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'uid', 'username', 'currentLevel', 'currentTierName', 'tierOrder',
+               'verifiedDepositTotal', 'completedTasksTotal', 'qualifiedReferralsCount',
+               'progressPercent', 'nextLevelKey', 'assignedBy', 'updatedAt'
+             ]) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.username is string && data.username.size() >= 2 && data.username.size() <= 40 &&
+             data.currentLevel in ['bronze', 'silver', 'gold', 'platinum', 'diamond'] &&
+             data.currentTierName is string && data.currentTierName.size() >= 2 && data.currentTierName.size() <= 40 &&
+             data.tierOrder is int && data.tierOrder >= 1 && data.tierOrder <= 5 &&
+             data.verifiedDepositTotal is number && data.verifiedDepositTotal >= 0 &&
+             data.completedTasksTotal is int && data.completedTasksTotal >= 0 &&
+             data.qualifiedReferralsCount is int && data.qualifiedReferralsCount >= 0 &&
+             data.progressPercent is int && data.progressPercent >= 0 && data.progressPercent <= 100 &&
+             data.nextLevelKey is string && data.nextLevelKey.size() <= 40 &&
+             data.assignedBy in ['system_auto', 'admin_override'] &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidVipHistory(data) {
+      return data.keys().hasAll([
+               'historyId', 'uid', 'previousLevel', 'newLevel', 'reason',
+               'source', 'changedBy', 'createdAt'
+             ]) &&
+             data.keys().hasOnly([
+               'historyId', 'uid', 'previousLevel', 'newLevel', 'reason',
+               'source', 'changedBy', 'createdAt'
+             ]) &&
+             data.historyId is string && isValidId(data.historyId) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.previousLevel is string && data.previousLevel.size() <= 40 &&
+             data.newLevel in ['bronze', 'silver', 'gold', 'platinum', 'diamond'] &&
+             data.reason is string && data.reason.size() >= 2 && data.reason.size() <= 300 &&
+             data.source in ['server_auto', 'admin'] &&
+             data.changedBy is string && data.changedBy.size() >= 1 && data.changedBy.size() <= 150 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    match /vipConfigs/{levelKey} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isValidId(levelKey) &&
+                               isAdmin() &&
+                               isValidVipTierConfig(incoming()) &&
+                               incoming().levelKey == levelKey;
+      allow delete: if isValidId(levelKey) && isAdmin();
+    }
+
+    match /vipMemberships/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(uid) &&
+                       isValidVipMembership(incoming()) &&
+                       incoming().uid == uid && (
+                         isAdmin() ||
+                         (
+                           isOwner(uid) &&
+                           incoming().currentLevel == 'bronze' &&
+                           incoming().tierOrder == 1 &&
+                           incoming().verifiedDepositTotal == 0 &&
+                           incoming().completedTasksTotal == 0 &&
+                           incoming().qualifiedReferralsCount == 0 &&
+                           incoming().assignedBy == 'system_auto'
+                         )
+                       );
+      allow update: if isValidId(uid) &&
+                       isAdmin() &&
+                       isValidVipMembership(incoming()) &&
+                       incoming().uid == existing().uid;
+      allow delete: if isValidId(uid) && isAdmin();
+    }
+
+    match /vipHistory/{historyId} {
+      allow get: if isValidId(historyId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isValidId(historyId) &&
+                       isAdmin() &&
+                       isValidVipHistory(incoming()) &&
+                       incoming().historyId == historyId;
+      allow update, delete: if false;
+    }
+
+    // --- 2. GLOBAL LEADERBOARD SYSTEM ---
+
+    function isValidLeaderboardEntry(data) {
+      return data.keys().hasAll([
+               'uid', 'username', 'displayName', 'vipLevel', 'isVerified',
+               'dailyPoints', 'dailyDateKey', 'weeklyPoints', 'weekKey',
+               'monthlyPoints', 'monthKey', 'allTimeTaskPoints',
+               'completedTasksCount', 'qualifiedReferralsCount',
+               'verifiedActivityScore', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'uid', 'username', 'displayName', 'vipLevel', 'isVerified',
+               'dailyPoints', 'dailyDateKey', 'weeklyPoints', 'weekKey',
+               'monthlyPoints', 'monthKey', 'allTimeTaskPoints',
+               'completedTasksCount', 'qualifiedReferralsCount',
+               'verifiedActivityScore', 'updatedAt'
+             ]) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.username is string && data.username.size() >= 2 && data.username.size() <= 40 &&
+             data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 80 &&
+             data.vipLevel in ['bronze', 'silver', 'gold', 'platinum', 'diamond'] &&
+             data.isVerified is bool &&
+             data.dailyPoints is number && data.dailyPoints >= 0 &&
+             data.dailyDateKey is string && data.dailyDateKey.size() == 10 &&
+             data.weeklyPoints is number && data.weeklyPoints >= 0 &&
+             data.weekKey is string && data.weekKey.size() >= 6 && data.weekKey.size() <= 16 &&
+             data.monthlyPoints is number && data.monthlyPoints >= 0 &&
+             data.monthKey is string && data.monthKey.size() == 7 &&
+             data.allTimeTaskPoints is number && data.allTimeTaskPoints >= 0 &&
+             data.completedTasksCount is int && data.completedTasksCount >= 0 &&
+             data.qualifiedReferralsCount is int && data.qualifiedReferralsCount >= 0 &&
+             data.verifiedActivityScore is number && data.verifiedActivityScore >= 0 &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidLeaderboardPrize(data) {
+      return data.keys().hasAll([
+               'prizeId', 'periodType', 'rankFrom', 'rankTo', 'title',
+               'rewardDescription', 'rewardAmountPkr', 'isActive', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'prizeId', 'periodType', 'rankFrom', 'rankTo', 'title',
+               'rewardDescription', 'rewardAmountPkr', 'isActive', 'updatedAt'
+             ]) &&
+             data.prizeId is string && isValidId(data.prizeId) &&
+             data.periodType in ['daily', 'weekly', 'monthly', 'referrals', 'vip'] &&
+             data.rankFrom is int && data.rankFrom >= 1 && data.rankFrom <= 100 &&
+             data.rankTo is int && data.rankTo >= data.rankFrom && data.rankTo <= 100 &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 100 &&
+             data.rewardDescription is string && data.rewardDescription.size() >= 2 && data.rewardDescription.size() <= 300 &&
+             data.rewardAmountPkr is number && data.rewardAmountPkr >= 0 && data.rewardAmountPkr <= 1000000 &&
+             data.isActive is bool &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /leaderboardEntries/{uid} {
+      allow get, list: if isSignedIn();
+      allow create: if isValidId(uid) &&
+                       isValidLeaderboardEntry(incoming()) &&
+                       incoming().uid == uid && (
+                         isAdmin() ||
+                         (
+                           isOwner(uid) &&
+                           incoming().vipLevel == 'bronze' &&
+                           incoming().dailyPoints == 0 &&
+                           incoming().weeklyPoints == 0 &&
+                           incoming().monthlyPoints == 0 &&
+                           incoming().allTimeTaskPoints == 0 &&
+                           incoming().completedTasksCount == 0 &&
+                           incoming().qualifiedReferralsCount == 0 &&
+                           incoming().verifiedActivityScore == 0
+                         )
+                       );
+      allow update: if isValidId(uid) &&
+                       isAdmin() &&
+                       isValidLeaderboardEntry(incoming()) &&
+                       incoming().uid == existing().uid;
+      allow delete: if isValidId(uid) && isAdmin();
+    }
+
+    match /leaderboardPrizes/{prizeId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isValidId(prizeId) &&
+                               isAdmin() &&
+                               isValidLeaderboardPrize(incoming()) &&
+                               incoming().prizeId == prizeId;
+      allow delete: if isValidId(prizeId) && isAdmin();
+    }
+
+    // --- 3. NOTIFICATION CENTER & ADMIN ANNOUNCEMENTS ---
+
+    function isValidUserNotification(data) {
+      return data.keys().hasAll(['notificationId', 'uid', 'title', 'body', 'category', 'isRead', 'createdAt']) &&
+             data.keys().hasOnly(['notificationId', 'uid', 'title', 'body', 'category', 'isRead', 'readAt', 'referenceId', 'createdAt']) &&
+             data.notificationId is string && isValidId(data.notificationId) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+             data.body is string && data.body.size() >= 2 && data.body.size() <= 600 &&
+             data.category in ['system', 'vip', 'leaderboard', 'security', 'wallet', 'support', 'announcement'] &&
+             data.isRead is bool &&
+             (!('readAt' in data) || data.readAt == null || isValidTimestamp(data.readAt)) &&
+             isOptionalString(data, 'referenceId', 160) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidAnnouncement(data) {
+      return data.keys().hasAll([
+               'announcementId', 'title', 'body', 'category', 'status',
+               'sendPushNotification', 'pushDispatched', 'createdByUid',
+               'createdByEmail', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'announcementId', 'title', 'body', 'category', 'status',
+               'scheduledFor', 'publishedAt', 'sendPushNotification',
+               'pushDispatched', 'createdByUid', 'createdByEmail',
+               'createdAt', 'updatedAt'
+             ]) &&
+             data.announcementId is string && isValidId(data.announcementId) &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 140 &&
+             data.body is string && data.body.size() >= 2 && data.body.size() <= 1000 &&
+             data.category in ['announcement', 'promotion', 'security', 'maintenance'] &&
+             data.status in ['scheduled', 'published', 'cancelled'] &&
+             (!('scheduledFor' in data) || data.scheduledFor == null || data.scheduledFor is timestamp) &&
+             (!('publishedAt' in data) || data.publishedAt == null || isValidTimestamp(data.publishedAt)) &&
+             data.sendPushNotification is bool &&
+             data.pushDispatched is bool &&
+             data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+             data.createdByEmail is string && data.createdByEmail.size() >= 3 && data.createdByEmail.size() <= 150 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isValidId(notificationId) &&
+                       isAdmin() &&
+                       isValidUserNotification(incoming()) &&
+                       incoming().notificationId == notificationId;
+      allow update: if isValidId(notificationId) &&
+                       isValidUserNotification(incoming()) &&
+                       incoming().notificationId == existing().notificationId &&
+                       incoming().uid == existing().uid &&
+                       incoming().createdAt == existing().createdAt && (
+                         isAdmin() ||
+                         (
+                           isOwner(existing().uid) &&
+                           incoming().isRead == true &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'readAt'])
+                         )
+                       );
+      allow delete: if isValidId(notificationId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
+    }
+
+    match /announcements/{announcementId} {
+      allow get: if isValidId(announcementId) && (isAdmin() || (isSignedIn() && resource != null && existing().status == 'published'));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.status == 'published');
+      allow create, update: if isValidId(announcementId) &&
+                               isAdmin() &&
+                               isValidAnnouncement(incoming()) &&
+                               incoming().announcementId == announcementId;
+      allow delete: if isValidId(announcementId) && isAdmin();
+    }
+
+    match /announcementReads/{readId} {
+      allow get: if isValidId(readId) && (
+        isAdmin() ||
+        (isSignedIn() && (
+          (resource == null && readId.size() > request.auth.uid.size() && readId[0:request.auth.uid.size() + 1] == request.auth.uid + '_') ||
+          (resource != null && existing().uid == request.auth.uid)
+        ))
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create, update: if isValidId(readId) &&
+                               isSignedIn() &&
+                               incoming().keys().hasAll(['uid', 'announcementId', 'readAt']) &&
+                               incoming().keys().hasOnly(['uid', 'announcementId', 'readAt']) &&
+                               incoming().uid == request.auth.uid &&
+                               isValidId(incoming().announcementId) &&
+                               readId == incoming().uid + '_' + incoming().announcementId &&
+                               isValidTimestamp(incoming().readAt);
+      allow delete: if isValidId(readId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
+    }
+
+    // --- 4. ACCOUNT SECURITY SYSTEM ---
+
+    function isValidSecurityProfile(data) {
+      return data.keys().hasAll([
+               'uid', 'totpEnabled', 'biometricEnabled', 'otpVerified',
+               'withdrawalDetailVerified', 'suspiciousAlertActive', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'uid', 'totpEnabled', 'totpSecret', 'biometricEnabled',
+               'otpVerified', 'lastOtpVerifiedAt',
+               'verifiedWithdrawMethod', 'verifiedWithdrawAccount',
+               'verifiedWithdrawHolderName', 'withdrawalDetailVerified',
+               'withdrawalDetailVerifiedAt', 'suspiciousAlertActive', 'updatedAt'
+             ]) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.totpEnabled is bool &&
+             isOptionalString(data, 'totpSecret', 128) &&
+             data.biometricEnabled is bool &&
+             data.otpVerified is bool &&
+             (!('lastOtpVerifiedAt' in data) || data.lastOtpVerifiedAt == null || isValidTimestamp(data.lastOtpVerifiedAt)) &&
+             isOptionalString(data, 'verifiedWithdrawMethod', 60) &&
+             isOptionalString(data, 'verifiedWithdrawAccount', 100) &&
+             isOptionalString(data, 'verifiedWithdrawHolderName', 80) &&
+             data.withdrawalDetailVerified is bool &&
+             (!('withdrawalDetailVerifiedAt' in data) || data.withdrawalDetailVerifiedAt == null || isValidTimestamp(data.withdrawalDetailVerifiedAt)) &&
+             data.suspiciousAlertActive is bool &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSecurityDevice(data) {
+      return data.keys().hasAll([
+               'sessionId', 'uid', 'deviceId', 'deviceName', 'osVersion',
+               'appVersion', 'isTrusted', 'isSuspicious', 'status',
+               'firstSeenAt', 'lastActiveAt'
+             ]) &&
+             data.keys().hasOnly([
+               'sessionId', 'uid', 'deviceId', 'deviceName', 'manufacturer',
+               'osVersion', 'appVersion', 'timezoneId', 'localeCode',
+               'isTrusted', 'isSuspicious', 'suspiciousReason', 'status',
+               'firstSeenAt', 'lastActiveAt', 'revokedAt', 'revokedBy'
+             ]) &&
+             data.sessionId is string && isValidId(data.sessionId) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.deviceId is string && isValidId(data.deviceId) &&
+             data.deviceName is string && data.deviceName.size() >= 2 && data.deviceName.size() <= 100 &&
+             isOptionalString(data, 'manufacturer', 60) &&
+             data.osVersion is string && data.osVersion.size() >= 1 && data.osVersion.size() <= 40 &&
+             data.appVersion is string && data.appVersion.size() >= 1 && data.appVersion.size() <= 40 &&
+             isOptionalString(data, 'timezoneId', 80) &&
+             isOptionalString(data, 'localeCode', 40) &&
+             data.isTrusted is bool &&
+             data.isSuspicious is bool &&
+             isOptionalString(data, 'suspiciousReason', 300) &&
+             data.status in ['active', 'revoked'] &&
+             isValidTimestamp(data.firstSeenAt) &&
+             isValidTimestamp(data.lastActiveAt) &&
+             (!('revokedAt' in data) || data.revokedAt == null || isValidTimestamp(data.revokedAt)) &&
+             isOptionalString(data, 'revokedBy', 128);
+    }
+
+    function isValidSecurityEvent(data) {
+      return data.keys().hasAll([
+               'eventId', 'uid', 'username', 'eventType', 'title',
+               'details', 'severity', 'actorUid', 'createdAt'
+             ]) &&
+             data.keys().hasOnly([
+               'eventId', 'uid', 'username', 'eventType', 'title',
+               'details', 'deviceId', 'deviceName', 'severity', 'actorUid', 'createdAt'
+             ]) &&
+             data.eventId is string && isValidId(data.eventId) &&
+             data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+             data.username is string && data.username.size() >= 2 && data.username.size() <= 40 &&
+             data.eventType is string && data.eventType.size() >= 2 && data.eventType.size() <= 60 &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+             data.details is string && data.details.size() >= 2 && data.details.size() <= 500 &&
+             isOptionalString(data, 'deviceId', 128) &&
+             isOptionalString(data, 'deviceName', 100) &&
+             data.severity in ['info', 'warning', 'critical'] &&
+             data.actorUid is string && data.actorUid.size() >= 1 && data.actorUid.size() <= 128 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    match /securityProfiles/{uid} {
+      allow get: if isValidId(uid) && isOwner(uid);
+      allow list: if false;
+      allow create: if isValidId(uid) &&
+                       isOwner(uid) &&
+                       isValidSecurityProfile(incoming()) &&
+                       incoming().uid == uid;
+      allow update: if isValidId(uid) &&
+                       isOwner(uid) &&
+                       isValidSecurityProfile(incoming()) &&
+                       incoming().uid == existing().uid;
+      allow delete: if isValidId(uid) && isAdmin();
+    }
+
+    match /securityDevices/{sessionId} {
+      allow get: if isValidId(sessionId) && (
+        isAdmin() ||
+        (isSignedIn() && (
+          (resource == null && sessionId.size() > request.auth.uid.size() && sessionId[0:request.auth.uid.size() + 1] == request.auth.uid + '_') ||
+          (resource != null && existing().uid == request.auth.uid)
+        ))
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isValidId(sessionId) &&
+                       isSignedIn() &&
+                       isValidSecurityDevice(incoming()) &&
+                       incoming().uid == request.auth.uid &&
+                       sessionId == request.auth.uid + '_' + incoming().deviceId;
+      allow update: if isValidId(sessionId) &&
+                       isValidSecurityDevice(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().deviceId == existing().deviceId &&
+                       incoming().firstSeenAt == existing().firstSeenAt &&
+                       (isAdmin() || isOwner(existing().uid));
+      allow delete: if isValidId(sessionId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
+    }
+
+    match /securityEvents/{eventId} {
+      allow get: if isValidId(eventId) && (isAdmin() || (isSignedIn() && resource != null && existing().uid == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isValidId(eventId) &&
+                       isValidSecurityEvent(incoming()) &&
+                       incoming().eventId == eventId && (
+                         isAdmin() ||
+                         (
+                           isSignedIn() &&
+                           incoming().uid == request.auth.uid &&
+                           incoming().actorUid == request.auth.uid
+                         )
+                       );
+      allow update, delete: if false;
+    }
+
+    match /securityOtps/{challengeId} {
+      allow read, write: if false;
+    }
   }
 }

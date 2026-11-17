@@ -331,11 +331,20 @@ class MainViewModel(
             return
         }
 
-        val fileName = AppConstants.APK_ASSET_NAME
+        val versionTag = _appUpdateInfo.value.latestVersionName
+            .ifBlank { AppConstants.APK_ASSET_NAME }
+            .replace(Regex("[^A-Za-z0-9._-]"), "")
+        val fileName = if (versionTag.isNotBlank() && versionTag != AppConstants.APK_ASSET_NAME) {
+            "binace-smart-earn-v$versionTag.apk"
+        } else {
+            AppConstants.APK_ASSET_NAME
+        }
         val downloadId = try {
             val request = DownloadManager.Request(Uri.parse(trimmed))
-                .setTitle("Binace Smart Earn Update")
+                .setTitle("Binace Smart Earn v$versionTag")
                 .setDescription("Downloading $fileName")
+                .addRequestHeader("Accept", "application/vnd.android.package-archive, application/octet-stream, */*")
+                .addRequestHeader("User-Agent", "BinaceSmartEarn-Android")
                 .setMimeType("application/vnd.android.package-archive")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setAllowedOverMetered(true)
@@ -385,14 +394,20 @@ class MainViewModel(
 
                             when (status) {
                                 DownloadManager.STATUS_SUCCESSFUL -> {
-                                    _apkDownloadState.value = ApkDownloadState.Completed(
-                                        downloadId = downloadId,
-                                        fileName = fileName
-                                    )
-                                    _feedback.value = ActionFeedback(
-                                        isError = false,
-                                        message = "Downloaded $fileName. Open Downloads to install the update."
-                                    )
+                                    if (dlBytes in 1L..500_000L) {
+                                        _apkDownloadState.value = ApkDownloadState.Error(
+                                            "Downloaded file looks incomplete (${dlBytes / 1024} KB). Tap Download again or open the release in your browser."
+                                        )
+                                    } else {
+                                        _apkDownloadState.value = ApkDownloadState.Completed(
+                                            downloadId = downloadId,
+                                            fileName = fileName
+                                        )
+                                        _feedback.value = ActionFeedback(
+                                            isError = false,
+                                            message = "Downloaded $fileName. Tap Install / Open Downloads; if upgrading over a debug build, uninstall the old app first."
+                                        )
+                                    }
                                     finished = true
                                 }
                                 DownloadManager.STATUS_FAILED -> {
@@ -438,7 +453,7 @@ class MainViewModel(
                         }
                     )
                 } catch (_: Exception) {
-                    _feedback.value = ActionFeedback(true, "Open your system Downloads app to install ${AppConstants.APK_ASSET_NAME}.")
+                    _feedback.value = ActionFeedback(true, "Open your system Downloads folder to install ${AppConstants.APK_ASSET_NAME}.")
                 }
             }
         }

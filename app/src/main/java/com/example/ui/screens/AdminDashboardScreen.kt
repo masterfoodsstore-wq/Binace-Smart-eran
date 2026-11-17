@@ -94,13 +94,19 @@ import com.example.ui.components.StatMiniCard
 import com.example.ui.components.StatusPill
 import com.example.ui.components.VerifiedAccountBadge
 import com.example.ui.theme.AmberPending
+import com.example.ui.viewmodel.AdminPlatformViewModel
 import com.example.ui.viewmodel.AdminViewModel
+import com.example.ui.viewmodel.SupportViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AdminDashboardScreen(
     adminViewModel: AdminViewModel,
+    supportViewModel: SupportViewModel,
+    adminPlatformViewModel: AdminPlatformViewModel,
+    viewerProfile: UserProfile,
     isDarkTheme: Boolean,
+    onOpenSupportChat: (String) -> Unit,
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
@@ -120,11 +126,34 @@ fun AdminDashboardScreen(
     val isBusy by adminViewModel.isBusy.collectAsStateWithLifecycle()
     val feedback by adminViewModel.feedback.collectAsStateWithLifecycle()
 
+    val vipConfigs by adminPlatformViewModel.vipTierConfigs.collectAsStateWithLifecycle()
+    val vipMemberships by adminPlatformViewModel.allVipMemberships.collectAsStateWithLifecycle()
+    val leaderboardPrizes by adminPlatformViewModel.leaderboardPrizes.collectAsStateWithLifecycle()
+    val announcements by adminPlatformViewModel.allAnnouncements.collectAsStateWithLifecycle()
+    val securityEvents by adminPlatformViewModel.allSecurityEvents.collectAsStateWithLifecycle()
+    val securityDevices by adminPlatformViewModel.allSecurityDevices.collectAsStateWithLifecycle()
+    val platformBusy by adminPlatformViewModel.isBusy.collectAsStateWithLifecycle()
+    val platformFeedback by adminPlatformViewModel.feedback.collectAsStateWithLifecycle()
+    val supportFeedback by supportViewModel.feedback.collectAsStateWithLifecycle()
+    val supportUnreadCount by supportViewModel.staffUnreadTotal.collectAsStateWithLifecycle()
+
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(feedback) {
         feedback?.let {
             snackbarHostState.showSnackbar(it.message)
             adminViewModel.clearFeedback()
+        }
+    }
+    LaunchedEffect(platformFeedback) {
+        platformFeedback?.let {
+            snackbarHostState.showSnackbar(it.message)
+            adminPlatformViewModel.clearFeedback()
+        }
+    }
+    LaunchedEffect(supportFeedback) {
+        supportFeedback?.let {
+            snackbarHostState.showSnackbar(it.message)
+            supportViewModel.clearFeedback()
         }
     }
 
@@ -147,7 +176,12 @@ fun AdminDashboardScreen(
         "Payment Accounts",
         "Referrals & Settings",
         "Transactions",
-        "Audit Logs"
+        "Audit Logs",
+        if (supportUnreadCount > 0) "Live Support ($supportUnreadCount)" else "Live Support",
+        "VIP & Members",
+        "Leaderboard",
+        "Broadcasts",
+        "Security Audits"
     )
 
     Scaffold(
@@ -190,6 +224,16 @@ fun AdminDashboardScreen(
                     }
                 }
 
+                if (selectedTab == 9) {
+                    AdminSupportQueuePanel(
+                        supportViewModel = supportViewModel,
+                        viewerProfile = viewerProfile,
+                        allUsers = users,
+                        isFullAdmin = true,
+                        isDarkTheme = isDarkTheme,
+                        onOpenSupportChat = onOpenSupportChat
+                    )
+                } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
@@ -900,7 +944,7 @@ fun AdminDashboardScreen(
                             }
                         }
 
-                        else -> {
+                        8 -> {
                             // AUDIT LOGS
                             if (auditLogs.isEmpty()) {
                                 item { EmptyStateCard(Icons.AutoMirrored.Filled.ReceiptLong, "No Audit Logs Yet", "Admin actions are recorded immutably here.") }
@@ -924,7 +968,38 @@ fun AdminDashboardScreen(
                                 }
                             }
                         }
+
+                        10 -> vipAdminItems(
+                            vipConfigs = vipConfigs,
+                            vipMemberships = vipMemberships,
+                            users = users,
+                            isBusy = isBusy || platformBusy,
+                            adminPlatformViewModel = adminPlatformViewModel
+                        )
+
+                        11 -> leaderboardPrizesAdminItems(
+                            prizes = leaderboardPrizes,
+                            isBusy = isBusy || platformBusy,
+                            adminPlatformViewModel = adminPlatformViewModel
+                        )
+
+                        12 -> announcementsAdminItems(
+                            announcements = announcements,
+                            isBusy = isBusy || platformBusy,
+                            adminPlatformViewModel = adminPlatformViewModel
+                        )
+
+                        13 -> securityAuditAdminItems(
+                            events = securityEvents,
+                            devices = securityDevices,
+                            isBusy = isBusy || platformBusy,
+                            isDarkTheme = isDarkTheme,
+                            adminPlatformViewModel = adminPlatformViewModel
+                        )
+
+                        else -> Unit
                     }
+                }
                 }
             }
         }

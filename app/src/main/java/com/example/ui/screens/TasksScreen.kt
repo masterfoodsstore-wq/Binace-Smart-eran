@@ -24,11 +24,13 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -39,12 +41,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.AppSettings
@@ -57,7 +62,9 @@ import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.FintechFormatters
 import com.example.ui.components.SimulatedBadge
 import com.example.ui.components.StatusPill
+import com.example.util.TaskResetCountdownHelper
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 @Composable
 fun TasksScreen(
@@ -74,6 +81,19 @@ fun TasksScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Daily Tasks, 1 = Completion History
     val timers = remember { mutableStateMapOf<String, Int>() }
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            nowMillis = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
+
+    val resetCountdown = remember(nowMillis) {
+        TaskResetCountdownHelper.calculateCountdown(nowMillis)
+    }
+    val effectiveDateKey = resetCountdown.pktDateKey.ifBlank { todayDateKey }
 
     // Countdown tick for active timed tasks (e.g., Watch Video)
     val activeKeys = timers.filterValues { it > 0 }.keys.toList()
@@ -87,11 +107,11 @@ fun TasksScreen(
         }
     }
 
-    val todayMap = remember(userTasks, todayDateKey) {
-        userTasks.filter { it.dateKey == todayDateKey }.associateBy { it.taskId }
+    val todayMap = remember(userTasks, effectiveDateKey) {
+        userTasks.filter { it.dateKey == effectiveDateKey }.associateBy { it.taskId }
     }
     val completedTodayCount = todayMap.values.count { it.status == "claimed" }
-    val todayEarned = if (profile.todayTaskDate == todayDateKey) profile.todayTaskEarnings else 0.0
+    val todayEarned = if (profile.todayTaskDate == effectiveDateKey) profile.todayTaskEarnings else 0.0
     val pendingTodayCount = when (tasksState) {
         is UiState.Success -> tasksState.data.count { todayMap[it.id]?.status != "claimed" }
         else -> 0
@@ -121,7 +141,7 @@ fun TasksScreen(
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
-                            text = "Resets 12:00 AM PKT ($todayDateKey) • Daily Limit: PKR ${todayEarned.toInt()} / ${settings.maxDailyReward.toInt()}",
+                            text = "Resets 12:00 AM PKT ($effectiveDateKey) • Daily Limit: PKR ${todayEarned.toInt()} / ${settings.maxDailyReward.toInt()}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -149,26 +169,91 @@ fun TasksScreen(
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("tasks_reset_countdown_card")
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Column {
-                            Text("Pending Today", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$pendingTodayCount tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("Pending Today", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("$pendingTodayCount tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Completed Today", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("$completedTodayCount tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("All-Time Earned", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(FintechFormatters.formatPkr(profile.totalEarnedTasks), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            }
                         }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Completed Today", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$completedTodayCount tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Timer,
+                                    contentDescription = "Next tasks reset countdown",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = if (pendingTodayCount == 0 && completedTodayCount > 0) {
+                                            "All Done • Next Task Batch In"
+                                        } else {
+                                            "Next Set of Simulated Tasks In"
+                                        },
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Daily auto-reset at 12:00 AM PKT",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.testTag("tasks_reset_countdown_timer")
+                            ) {
+                                CountdownUnitPill(value = resetCountdown.hours, unit = "h")
+                                Text(":", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                CountdownUnitPill(value = resetCountdown.minutes, unit = "m")
+                                Text(":", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                CountdownUnitPill(value = resetCountdown.seconds, unit = "s")
+                            }
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("All-Time Earned", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(FintechFormatters.formatPkr(profile.totalEarnedTasks), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        }
+
+                        LinearProgressIndicator(
+                            progress = { resetCountdown.progressFraction },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(50))
+                        )
                     }
                 }
             }
@@ -480,5 +565,27 @@ private fun DailyTaskCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CountdownUnitPill(
+    value: Long,
+    unit: String
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
+    ) {
+        Text(
+            text = String.format(java.util.Locale.US, "%02d%s", value, unit),
+            style = MaterialTheme.typography.labelLarge.merge(
+                TextStyle(fontFeatureSettings = "tnum")
+            ),
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+        )
     }
 }

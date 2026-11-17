@@ -87,6 +87,7 @@ import com.example.data.model.DepositRequest
 import com.example.data.model.DepositStatusNotification
 import com.example.data.model.PaymentAccountConfig
 import com.example.data.model.ReceiptUploadState
+import com.example.data.model.SecurityProfile
 import com.example.data.model.TransactionRecord
 import com.example.data.model.UserProfile
 import com.example.data.model.WalletAccount
@@ -112,6 +113,8 @@ fun WalletScreen(
     initialSubTab: Int,
     isActionBusy: Boolean,
     isDarkTheme: Boolean,
+    securityProfile: SecurityProfile? = null,
+    onOpenSecurity: () -> Unit = {},
     onSelectReceipt: (Uri) -> Unit = {},
     onRemoveReceipt: () -> Unit = {},
     onDismissNotification: () -> Unit = {},
@@ -722,6 +725,59 @@ fun WalletScreen(
                                                 enabled = profile.isVerified,
                                                 label = { Text(method) }
                                             )
+                                        }
+                                    }
+
+                                    val savedWithdrawAcct = securityProfile?.verifiedWithdrawAccount.orEmpty()
+                                    val savedWithdrawMethod = securityProfile?.verifiedWithdrawMethod.orEmpty().ifBlank { "EasyPaisa" }
+                                    val savedWithdrawHolder = securityProfile?.verifiedWithdrawHolderName.orEmpty()
+                                    if (securityProfile?.withdrawalDetailVerified == true && savedWithdrawAcct.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "Verified Payout Account",
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                    Text(
+                                                        text = "$savedWithdrawMethod • $savedWithdrawAcct ($savedWithdrawHolder)",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        withdrawMethod = savedWithdrawMethod
+                                                        withdrawAccountRef = savedWithdrawAcct
+                                                    },
+                                                    enabled = profile.isVerified
+                                                ) {
+                                                    Text("Use")
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        OutlinedButton(
+                                            onClick = onOpenSecurity,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(44.dp)
+                                                .testTag("wallet_verify_payout_button")
+                                        ) {
+                                            Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Verify Payout Account in Security")
                                         }
                                     }
 
