@@ -4,5 +4,5 @@
     <string name="cd_google_sign_in">Google Sign-In</string>
     <string name="cd_app_emblem">Binace Smart Earn Emblem</string>
     <string name="cd_referral_banner">Referral Network Illustration</string>
-    <string name="security_notice">Security Notice: Never share your account password or banking PIN. All wallet requests and commissions are verified securely by authorized admins.</string>
+    <string name="security_notice">Security Notice: Never share your account password or banking PIN. All wallet balances, deposits, rewards, and withdrawals are simulated demo transactions with no real-money requirement.</string>
 </resources>

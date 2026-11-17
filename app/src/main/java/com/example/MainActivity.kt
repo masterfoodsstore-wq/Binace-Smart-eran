@@ -340,7 +340,9 @@ private fun MainAppScaffold(
     val paymentAccounts by mainViewModel.paymentAccounts.collectAsStateWithLifecycle()
     val receiptUploadState by mainViewModel.receiptUploadState.collectAsStateWithLifecycle()
     val latestDepositNotification by mainViewModel.latestDepositNotification.collectAsStateWithLifecycle()
+    val accountVerifiedBanner by mainViewModel.accountVerifiedBanner.collectAsStateWithLifecycle()
     val appUpdateInfo by mainViewModel.appUpdateInfo.collectAsStateWithLifecycle()
+    val apkDownloadState by mainViewModel.apkDownloadState.collectAsStateWithLifecycle()
     val isActionBusy by mainViewModel.isActionBusy.collectAsStateWithLifecycle()
     val feedback by mainViewModel.feedback.collectAsStateWithLifecycle()
 
@@ -358,6 +360,12 @@ private fun MainAppScaffold(
     LaunchedEffect(latestDepositNotification) {
         latestDepositNotification?.let { notif ->
             showDepositStatusNotification(context, notif)
+        }
+    }
+
+    LaunchedEffect(accountVerifiedBanner) {
+        if (accountVerifiedBanner) {
+            showAccountVerifiedNotification(context, profile.username)
         }
     }
 
@@ -458,11 +466,16 @@ private fun MainAppScaffold(
                         profile = profile,
                         todayDateKey = mainViewModel.todayDateKey(),
                         isAdmin = isAdmin,
+                        isDarkTheme = isDarkTheme,
+                        showVerifiedBanner = accountVerifiedBanner,
+                        onDismissVerifiedBanner = { mainViewModel.dismissVerifiedBanner() },
                         deposits = deposits,
                         withdrawals = withdrawals,
                         referrals = referrals,
                         appUpdateInfo = appUpdateInfo,
-                        onDownloadApk = { url -> openApkDownloadUrl(context, url) },
+                        apkDownloadState = apkDownloadState,
+                        onDownloadApk = { url -> mainViewModel.startApkDownload(context, url) },
+                        onOpenDownloads = { url -> mainViewModel.openDownloadedApkInstaller(context, url) },
                         onNavigateTasks = { navigateTab(Routes.TASKS) },
                         onNavigateDeposit = {
                             walletInitialTab = 1
@@ -494,8 +507,12 @@ private fun MainAppScaffold(
                         userTasks = userTasks,
                         isActionBusy = isActionBusy,
                         isDarkTheme = isDarkTheme,
-                        onStartTask = { mainViewModel.startTask(it) },
-                        onClaimReward = { mainViewModel.claimTaskReward(it, profile) }
+                        onStartTask = { mainViewModel.startTask(it, profile) },
+                        onClaimReward = { mainViewModel.claimTaskReward(it, profile) },
+                        onNavigateDeposit = {
+                            walletInitialTab = 1
+                            navigateTab(Routes.WALLET)
+                        }
                     )
                 }
 
@@ -539,7 +556,11 @@ private fun MainAppScaffold(
                         settings = settings,
                         referrals = referrals,
                         commissions = commissions,
-                        isDarkTheme = isDarkTheme
+                        isDarkTheme = isDarkTheme,
+                        onNavigateDeposit = {
+                            walletInitialTab = 1
+                            navigateTab(Routes.WALLET)
+                        }
                     )
                 }
 
@@ -551,12 +572,14 @@ private fun MainAppScaffold(
                         isDarkTheme = isDarkTheme,
                         isActionBusy = isActionBusy,
                         appUpdateInfo = appUpdateInfo,
+                        apkDownloadState = apkDownloadState,
                         onToggleTheme = onToggleTheme,
                         onUpdateProfile = { name, user, phone ->
                             mainViewModel.updateProfile(name, user, phone)
                         },
                         onCheckForUpdates = { mainViewModel.checkForUpdates(manual = true) },
-                        onDownloadApk = { url -> openApkDownloadUrl(context, url) },
+                        onDownloadApk = { url -> mainViewModel.startApkDownload(context, url) },
+                        onOpenDownloads = { url -> mainViewModel.openDownloadedApkInstaller(context, url) },
                         onOpenAdmin = {
                             if (isAdmin) navController.navigate(Routes.ADMIN)
                         },
@@ -602,22 +625,6 @@ private fun openOfficialWebsite(context: Context) {
         context.startActivity(intent)
     } catch (_: Exception) {
         Toast.makeText(context, "Unable to open website", Toast.LENGTH_SHORT).show()
-    }
-}
-
-private fun openApkDownloadUrl(context: Context, url: String) {
-    val trimmed = url.trim()
-    if (!trimmed.startsWith("https://")) {
-        Toast.makeText(context, "Invalid APK download URL", Toast.LENGTH_SHORT).show()
-        return
-    }
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(trimmed)).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    try {
-        context.startActivity(intent)
-    } catch (_: Exception) {
-        Toast.makeText(context, "Unable to open APK download link", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -691,6 +698,45 @@ private fun showDepositStatusNotification(
 
     try {
         NotificationManagerCompat.from(context).notify(notif.depositId.hashCode(), notification)
+    } catch (_: SecurityException) {
+    }
+}
+
+private fun showAccountVerifiedNotification(context: Context, username: String) {
+    val channelId = "deposit_status_channel"
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        if (manager != null && manager.getNotificationChannel(channelId) == null) {
+            val channel = NotificationChannel(
+                channelId,
+                "Deposit Status Updates",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts when an administrator verifies your account or updates your deposit request."
+            }
+            manager.createNotificationChannel(channel)
+        }
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) return
+    }
+
+    val body = "Your @${username} account is now VERIFIED. Daily tasks, referral sharing, and simulated demo withdrawals are unlocked."
+    val notification = NotificationCompat.Builder(context, channelId)
+        .setSmallIcon(android.R.drawable.stat_notify_more)
+        .setContentTitle("Account Verified • Binace Smart Earn")
+        .setContentText(body)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setAutoCancel(true)
+        .build()
+
+    try {
+        NotificationManagerCompat.from(context).notify(9001, notification)
     } catch (_: SecurityException) {
     }
 }

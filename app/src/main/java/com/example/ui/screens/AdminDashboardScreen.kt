@@ -81,6 +81,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.example.data.model.AppConstants
 import com.example.data.model.DepositRequest
 import com.example.data.model.PaymentAccountConfig
 import com.example.data.model.TaskItem
@@ -91,6 +92,7 @@ import com.example.ui.components.FintechFormatters
 import com.example.ui.components.SimulatedBadge
 import com.example.ui.components.StatMiniCard
 import com.example.ui.components.StatusPill
+import com.example.ui.components.VerifiedAccountBadge
 import com.example.ui.theme.AmberPending
 import com.example.ui.viewmodel.AdminViewModel
 
@@ -128,6 +130,7 @@ fun AdminDashboardScreen(
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var userSearch by remember { mutableStateOf("") }
+    var userVerificationFilter by remember { mutableStateOf("all") }
     var depositFilter by remember { mutableStateOf("all") }
     var selectedUserDetail by remember { mutableStateOf<UserProfile?>(null) }
     var editingTask by remember { mutableStateOf<TaskItem?>(null) }
@@ -196,6 +199,8 @@ fun AdminDashboardScreen(
                         0 -> {
                             // OVERVIEW STATS
                             val activeUsers = users.count { it.accountStatus == "active" }
+                            val verifiedUsers = users.count { it.isVerified }
+                            val unverifiedUsers = users.size - verifiedUsers
                             val completedTasks = userTasks.count { it.status == "claimed" }
                             val pendingDeposits = deposits.count { it.status.equals("pending", ignoreCase = true) }
                             val pendingWithdrawals = withdrawals.count { it.status.equals("pending", ignoreCase = true) }
@@ -221,6 +226,10 @@ fun AdminDashboardScreen(
                                         StatMiniCard("Active Users", "$activeUsers", Icons.Default.CheckCircle, Modifier.weight(1f))
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                                        StatMiniCard("Verified Users", "$verifiedUsers", Icons.Default.CheckCircle, Modifier.weight(1f))
+                                        StatMiniCard("Unverified Users", "$unverifiedUsers", Icons.Default.HourglassTop, Modifier.weight(1f), AmberPending)
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                                         StatMiniCard("Total Tasks", "${tasks.size}", Icons.Default.TaskAlt, Modifier.weight(1f))
                                         StatMiniCard("Completed Tasks", "$completedTasks", Icons.Default.CheckCircle, Modifier.weight(1f))
                                     }
@@ -240,21 +249,43 @@ fun AdminDashboardScreen(
                         1 -> {
                             // USER MANAGEMENT
                             item {
-                                OutlinedTextField(
-                                    value = userSearch,
-                                    onValueChange = { userSearch = it },
-                                    label = { Text("Search by name, @username, email, or User ID") },
-                                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = userSearch,
+                                        onValueChange = { userSearch = it },
+                                        label = { Text("Search by name, @username, email, or User ID") },
+                                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        listOf(
+                                            "all" to "All (${users.size})",
+                                            "verified" to "Verified (${users.count { it.isVerified }})",
+                                            "unverified" to "Unverified (${users.count { !it.isVerified }})"
+                                        ).forEach { (key, label) ->
+                                            FilterChip(
+                                                selected = userVerificationFilter == key,
+                                                onClick = { userVerificationFilter = key },
+                                                label = { Text(label) },
+                                                modifier = Modifier.testTag("admin_users_filter_$key")
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                            val filteredUsers = users.filter {
-                                userSearch.isBlank() ||
-                                    it.fullName.contains(userSearch, ignoreCase = true) ||
-                                    it.username.contains(userSearch, ignoreCase = true) ||
-                                    it.email.contains(userSearch, ignoreCase = true) ||
-                                    it.uid.contains(userSearch, ignoreCase = true)
+                            val filteredUsers = users.filter { user ->
+                                val matchesSearch = userSearch.isBlank() ||
+                                    user.fullName.contains(userSearch, ignoreCase = true) ||
+                                    user.username.contains(userSearch, ignoreCase = true) ||
+                                    user.email.contains(userSearch, ignoreCase = true) ||
+                                    user.uid.contains(userSearch, ignoreCase = true)
+                                val matchesVerify = when (userVerificationFilter) {
+                                    "verified" -> user.isVerified
+                                    "unverified" -> !user.isVerified
+                                    else -> true
+                                }
+                                matchesSearch && matchesVerify
                             }
                             if (filteredUsers.isEmpty()) {
                                 item { EmptyStateCard(Icons.Default.Group, "No Matching Users", "Registered accounts appear here.") }
@@ -277,15 +308,40 @@ fun AdminDashboardScreen(
                                                     Text("${user.fullName} (@${user.username})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                                     Text("${user.email} • UID: ${user.uid.take(10)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                     Text("Wallet: ${FintechFormatters.formatPkr(liveWalletBalance)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                                    if (user.isVerified && user.verifiedAt != null) {
+                                                        Text(
+                                                            text = "Verified: ${FintechFormatters.formatDate(user.verifiedAt)}",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    } else if (!user.isVerified && user.firstDepositStatus == "pending") {
+                                                        Text(
+                                                            text = "First Deposit Pending Review",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = AmberPending
+                                                        )
+                                                    }
                                                 }
-                                                StatusPill(status = user.accountStatus, isDarkTheme = isDarkTheme)
+                                                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    VerifiedAccountBadge(isVerified = user.isVerified, isDarkTheme = isDarkTheme)
+                                                    StatusPill(status = user.accountStatus, isDarkTheme = isDarkTheme)
+                                                }
                                             }
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 OutlinedButton(
                                                     onClick = { selectedUserDetail = user },
                                                     modifier = Modifier.height(44.dp)
                                                 ) {
                                                     Text("View History")
+                                                }
+                                                Button(
+                                                    onClick = { adminViewModel.verifyUserAccount(user, !user.isVerified) },
+                                                    enabled = !isBusy,
+                                                    modifier = Modifier
+                                                        .height(44.dp)
+                                                        .testTag("admin_verify_user_${user.uid}")
+                                                ) {
+                                                    Text(if (user.isVerified) "Revoke Verify" else "Verify Account")
                                                 }
                                                 Button(
                                                     onClick = { adminViewModel.toggleUserStatus(user) },
@@ -576,6 +632,12 @@ fun AdminDashboardScreen(
                                 var taskLimitInput by remember(settings.dailyTaskLimit) {
                                     mutableStateOf(settings.dailyTaskLimit.toString())
                                 }
+                                var minDepositInput by remember(settings.minDeposit) {
+                                    mutableStateOf(maxOf(AppConstants.DEFAULT_MIN_DEPOSIT, settings.minDeposit).toInt().toString())
+                                }
+                                var minWithdrawalInput by remember(settings.minWithdrawal) {
+                                    mutableStateOf(maxOf(AppConstants.DEFAULT_MIN_WITHDRAWAL, settings.minWithdrawal).toInt().toString())
+                                }
                                 var repoSlugInput by remember(settings.githubRepoSlug) {
                                     mutableStateOf(settings.githubRepoSlug)
                                 }
@@ -628,6 +690,24 @@ fun AdminDashboardScreen(
                                                 modifier = Modifier.weight(1f)
                                             )
                                         }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                            OutlinedTextField(
+                                                value = minDepositInput,
+                                                onValueChange = { minDepositInput = it.filter { c -> c.isDigit() } },
+                                                label = { Text("Min Deposit (PKR)") },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            OutlinedTextField(
+                                                value = minWithdrawalInput,
+                                                onValueChange = { minWithdrawalInput = it.filter { c -> c.isDigit() } },
+                                                label = { Text("Min Withdrawal (PKR)") },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
                                         OutlinedTextField(
                                             value = taskLimitInput,
                                             onValueChange = { taskLimitInput = it.filter { c -> c.isDigit() } },
@@ -673,7 +753,7 @@ fun AdminDashboardScreen(
                                             value = apkUrlInput,
                                             onValueChange = { apkUrlInput = it },
                                             label = { Text("Public APK Download URL (optional override)") },
-                                            placeholder = { Text("https://github.com/owner/repo/releases/latest/download/binace-smart-earn-latest.apk") },
+                                            placeholder = { Text("https://github.com/owner/repo/releases/latest/download/${AppConstants.APK_ASSET_NAME}") },
                                             singleLine = true,
                                             modifier = Modifier.fillMaxWidth()
                                         )
@@ -686,18 +766,22 @@ fun AdminDashboardScreen(
                                         )
                                         Button(
                                             onClick = {
-                                                val comm = commInput.toDoubleOrNull() ?: 100.0
-                                                val rewardVal = taskRewardInput.toDoubleOrNull() ?: 20.0
-                                                val maxDailyVal = maxDailyInput.toDoubleOrNull() ?: 200.0
-                                                val limit = taskLimitInput.toLongOrNull() ?: 10L
+                                                val comm = commInput.toDoubleOrNull() ?: AppConstants.DEFAULT_REFERRAL_COMMISSION
+                                                val rewardVal = taskRewardInput.toDoubleOrNull() ?: AppConstants.DEFAULT_TASK_REWARD
+                                                val maxDailyVal = maxDailyInput.toDoubleOrNull() ?: AppConstants.DEFAULT_MAX_DAILY_REWARD
+                                                val limit = taskLimitInput.toLongOrNull() ?: AppConstants.DEFAULT_DAILY_TASK_LIMIT
+                                                val minDep = (minDepositInput.toDoubleOrNull() ?: AppConstants.DEFAULT_MIN_DEPOSIT)
+                                                    .coerceAtLeast(AppConstants.DEFAULT_MIN_DEPOSIT)
+                                                val minWd = (minWithdrawalInput.toDoubleOrNull() ?: AppConstants.DEFAULT_MIN_WITHDRAWAL)
+                                                    .coerceAtLeast(AppConstants.DEFAULT_MIN_WITHDRAWAL)
                                                 val versionCodeVal = latestCodeInput.toLongOrNull() ?: 0L
                                                 adminViewModel.updateSettings(
                                                     referralCommission = comm,
                                                     defaultTaskReward = rewardVal,
                                                     maxDailyReward = maxDailyVal,
                                                     dailyTaskLimit = limit,
-                                                    minDeposit = settings.minDeposit,
-                                                    minWithdrawal = settings.minWithdrawal,
+                                                    minDeposit = minDep,
+                                                    minWithdrawal = minWd,
                                                     githubRepoSlug = repoSlugInput,
                                                     latestVersionName = latestVersionInput,
                                                     latestVersionCode = versionCodeVal,

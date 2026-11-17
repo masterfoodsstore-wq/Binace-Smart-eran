@@ -66,6 +66,7 @@ import com.example.data.model.AppSettings
 import com.example.data.model.CommissionRecord
 import com.example.data.model.ReferralRecord
 import com.example.data.model.UserProfile
+import com.example.ui.components.AccountVerificationNoticeCard
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.FintechFormatters
 import com.example.ui.components.SimulatedBadge
@@ -85,7 +86,8 @@ fun ReferralsScreen(
     settings: AppSettings,
     referrals: List<ReferralRecord>,
     commissions: List<CommissionRecord>,
-    isDarkTheme: Boolean
+    isDarkTheme: Boolean,
+    onNavigateDeposit: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val referralLink = ReferralLinkHelper.buildReferralLink(profile.referralCode)
@@ -142,24 +144,37 @@ fun ReferralsScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                SimulatedBadge(label = "RS. ${rewardPerReferral.toInt()} / REFERRAL")
+                                SimulatedBadge(label = "SIMULATED RS. ${rewardPerReferral.toInt()} / REFERRAL")
                                 Icon(Icons.Default.CardGiftcard, contentDescription = null, tint = EmeraldPrimary)
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "Earn Rs. ${rewardPerReferral.toInt()} Per Verified Referral",
+                                text = "Simulated Demo Referral Rewards",
                                 style = MaterialTheme.typography.headlineSmall,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Share your official invite link. When a friend signs up via binacesmartearn.online and their qualifying first deposit is verified, you earn Rs. ${rewardPerReferral.toInt()} commission.",
+                                text = "Share your invite link. When a friend signs up via binacesmartearn.online and their qualifying simulated demo deposit is verified, your demo wallet receives a simulated Rs. ${rewardPerReferral.toInt()} reward.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color(0xFFBBD0C6)
                             )
                         }
                     }
+                }
+            }
+
+            if (!profile.isVerified) {
+                item {
+                    AccountVerificationNoticeCard(
+                        firstDepositStatus = profile.firstDepositStatus,
+                        isDarkTheme = isDarkTheme,
+                        title = "Referral Sharing Locked Until Verification",
+                        message = "Complete your first PKR 1,000 simulated demo deposit verification in Wallet > Deposit to unlock referral link copying and sharing.",
+                        actionLabel = "Go to Simulated Deposit",
+                        onActionClick = onNavigateDeposit
+                    )
                 }
             }
 
@@ -195,6 +210,7 @@ fun ReferralsScreen(
                                 )
                                 OutlinedButton(
                                     onClick = { copyToClipboard(context, "Referral Code", profile.referralCode) },
+                                    enabled = profile.isVerified,
                                     modifier = Modifier
                                         .height(48.dp)
                                         .testTag("copy_referral_code_button")
@@ -234,6 +250,7 @@ fun ReferralsScreen(
                                 ) {
                                     Button(
                                         onClick = { copyToClipboard(context, "Referral Link", referralLink) },
+                                        enabled = profile.isVerified,
                                         modifier = Modifier
                                             .weight(1f)
                                             .height(48.dp)
@@ -245,6 +262,7 @@ fun ReferralsScreen(
                                     }
                                     OutlinedButton(
                                         onClick = { openHttpsUrl(context, referralLink) },
+                                        enabled = profile.isVerified,
                                         modifier = Modifier
                                             .height(48.dp)
                                             .testTag("open_referral_link_button")
@@ -265,6 +283,7 @@ fun ReferralsScreen(
                                     webFallbackUrl = ReferralLinkHelper.whatsAppShareUrl(shareMessage)
                                 )
                             },
+                            enabled = profile.isVerified,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = EmeraldPrimary,
                                 contentColor = Color(0xFF04140C)
@@ -276,7 +295,10 @@ fun ReferralsScreen(
                         ) {
                             Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Share on WhatsApp", fontWeight = FontWeight.Bold)
+                            Text(
+                                if (profile.isVerified) "Share on WhatsApp" else "Verify Account to Share",
+                                fontWeight = FontWeight.Bold
+                            )
                         }
 
                         FlowRow(
@@ -293,6 +315,7 @@ fun ReferralsScreen(
                                         webFallbackUrl = ReferralLinkHelper.facebookShareUrl(referralLink, shareMessage)
                                     )
                                 },
+                                enabled = profile.isVerified,
                                 modifier = Modifier
                                     .height(48.dp)
                                     .testTag("share_facebook_button")
@@ -308,6 +331,7 @@ fun ReferralsScreen(
                                         webFallbackUrl = ReferralLinkHelper.telegramShareUrl(referralLink, shareMessage)
                                     )
                                 },
+                                enabled = profile.isVerified,
                                 modifier = Modifier
                                     .height(48.dp)
                                     .testTag("share_telegram_button")
@@ -316,6 +340,7 @@ fun ReferralsScreen(
                             }
                             OutlinedButton(
                                 onClick = { shareViaSms(context, shareMessage) },
+                                enabled = profile.isVerified,
                                 modifier = Modifier
                                     .height(48.dp)
                                     .testTag("share_sms_button")
@@ -326,6 +351,7 @@ fun ReferralsScreen(
                             }
                             OutlinedButton(
                                 onClick = { shareGeneral(context, shareMessage) },
+                                enabled = profile.isVerified,
                                 modifier = Modifier
                                     .height(48.dp)
                                     .testTag("share_more_apps_button")
@@ -401,9 +427,9 @@ fun ReferralsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Commission Rules (Rs. ${rewardPerReferral.toInt()} / Eligible Friend)", style = MaterialTheme.typography.titleMedium)
-                        Text("• 1 eligible = Rs. ${rewardPerReferral.toInt()}  |  5 eligible = Rs. ${(rewardPerReferral * 5).toInt()}  |  10 eligible = Rs. ${(rewardPerReferral * 10).toInt()}", style = MaterialTheme.typography.bodyMedium)
-                        Text("• Only one commission per referred friend after admin verifies their qualifying first deposit.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Simulated Commission Rules (Rs. ${rewardPerReferral.toInt()} / Eligible Friend)", style = MaterialTheme.typography.titleMedium)
+                        Text("• 1 eligible = Rs. ${rewardPerReferral.toInt()}  |  5 eligible = Rs. ${(rewardPerReferral * 5).toInt()}  |  10 eligible = Rs. ${(rewardPerReferral * 10).toInt()} (simulated)", style = MaterialTheme.typography.bodyMedium)
+                        Text("• One simulated commission per referred friend after admin verifies their qualifying first simulated deposit (no real money or guaranteed earnings).", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("• Self-referrals, duplicate referrals, pending deposits, and rejected deposits never earn commissions.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }

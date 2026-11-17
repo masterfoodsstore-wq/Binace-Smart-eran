@@ -142,6 +142,17 @@ class AdminViewModel(
         }
     }
 
+    fun verifyUserAccount(user: UserProfile, verified: Boolean) {
+        val label = if (verified) {
+            "@${user.username} verified & features unlocked."
+        } else {
+            "@${user.username} verification revoked."
+        }
+        runAction(label) {
+            adminRepository.verifyUserAccount(user, verified)
+        }
+    }
+
     fun approveDeposit(deposit: DepositRequest, adminNote: String = "Verified by admin") {
         runAction("Deposit approved & qualifying referral verified.") {
             adminRepository.approveDeposit(

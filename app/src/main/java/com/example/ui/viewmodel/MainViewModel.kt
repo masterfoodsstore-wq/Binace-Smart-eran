@@ -1,11 +1,16 @@
 package com.example.ui.viewmodel
 
+import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
+import com.example.data.model.ApkDownloadState
+import com.example.data.model.AppConstants
 import com.example.data.model.AppSettings
 import com.example.data.model.AppUpdateInfo
 import com.example.data.model.CommissionRecord
@@ -28,6 +33,9 @@ import com.example.data.repository.UserRepository
 import com.example.data.repository.WalletRepository
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -38,7 +46,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class ActionFeedback(
     val isError: Boolean,
@@ -54,7 +64,24 @@ class MainViewModel(
     private val appUpdateRepository: AppUpdateRepository = AppUpdateRepository()
 ) : ViewModel() {
 
+    private var knownVerificationState: Boolean? = null
+    private val _accountVerifiedBanner = MutableStateFlow(false)
+    val accountVerifiedBanner: StateFlow<Boolean> = _accountVerifiedBanner.asStateFlow()
+
     val userProfileState: StateFlow<UiState<UserProfile?>> = userRepository.observeUserProfile(currentUserId)
+        .onEach { profile ->
+            if (profile != null) {
+                val prev = knownVerificationState
+                if (prev == false && profile.isVerified) {
+                    _accountVerifiedBanner.value = true
+                    _feedback.value = ActionFeedback(
+                        isError = false,
+                        message = "Account Verified! Daily tasks, referrals & simulated demo withdrawals are now unlocked."
+                    )
+                }
+                knownVerificationState = profile.isVerified
+            }
+        }
         .map<UserProfile?, UiState<UserProfile?>> { UiState.Success(it) }
         .catch { error ->
             val firestoreError = unwrapFirestoreError(error)
@@ -208,6 +235,10 @@ class MainViewModel(
     )
     val appUpdateInfo: StateFlow<AppUpdateInfo> = _appUpdateInfo.asStateFlow()
 
+    private val _apkDownloadState = MutableStateFlow<ApkDownloadState>(ApkDownloadState.Idle)
+    val apkDownloadState: StateFlow<ApkDownloadState> = _apkDownloadState.asStateFlow()
+    private var apkDownloadMonitorJob: Job? = null
+
     private val _isActionBusy = MutableStateFlow(false)
     val isActionBusy: StateFlow<Boolean> = _isActionBusy.asStateFlow()
 
@@ -279,6 +310,140 @@ class MainViewModel(
         _latestDepositNotification.value = null
     }
 
+    fun dismissVerifiedBanner() {
+        _accountVerifiedBanner.value = false
+    }
+
+    fun dismissApkDownloadState() {
+        _apkDownloadState.value = ApkDownloadState.Idle
+    }
+
+    fun startApkDownload(context: Context, url: String) {
+        val trimmed = url.trim()
+        if (!trimmed.startsWith("https://")) {
+            _apkDownloadState.value = ApkDownloadState.Error("Invalid APK download URL. Configure a valid HTTPS release URL.")
+            return
+        }
+        val appContext = context.applicationContext
+        val downloadManager = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+        if (downloadManager == null) {
+            _apkDownloadState.value = ApkDownloadState.Error("System DownloadManager unavailable on this device.")
+            return
+        }
+
+        val fileName = AppConstants.APK_ASSET_NAME
+        val downloadId = try {
+            val request = DownloadManager.Request(Uri.parse(trimmed))
+                .setTitle("Binace Smart Earn Update")
+                .setDescription("Downloading $fileName")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
+            try {
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+            } catch (_: Exception) {
+                request.setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS, fileName)
+            }
+            downloadManager.enqueue(request)
+        } catch (e: Exception) {
+            _apkDownloadState.value = ApkDownloadState.Error(
+                e.localizedMessage ?: "Failed to start APK download."
+            )
+            return
+        }
+
+        apkDownloadMonitorJob?.cancel()
+        _apkDownloadState.value = ApkDownloadState.Downloading(
+            progressPercent = 0,
+            downloadedBytes = 0L,
+            totalBytes = _appUpdateInfo.value.apkFileSizeBytes.coerceAtLeast(0L),
+            downloadId = downloadId
+        )
+
+        apkDownloadMonitorJob = viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                while (isActive) {
+                    val query = DownloadManager.Query().setFilterById(downloadId)
+                    var finished = false
+                    downloadManager.query(query)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                            val dlIdx = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                            val totalIdx = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                            val reasonIdx = cursor.getColumnIndex(DownloadManager.COLUMN_REASON)
+
+                            val status = if (statusIdx >= 0) cursor.getInt(statusIdx) else DownloadManager.STATUS_RUNNING
+                            val dlBytes = if (dlIdx >= 0) cursor.getLong(dlIdx).coerceAtLeast(0L) else 0L
+                            val rawTotal = if (totalIdx >= 0) cursor.getLong(totalIdx) else -1L
+                            val effectiveTotal = if (rawTotal > 0L) rawTotal else _appUpdateInfo.value.apkFileSizeBytes
+                            val pct = if (effectiveTotal > 0L) {
+                                ((dlBytes * 100L) / effectiveTotal).toInt().coerceIn(0, 99)
+                            } else {
+                                0
+                            }
+
+                            when (status) {
+                                DownloadManager.STATUS_SUCCESSFUL -> {
+                                    _apkDownloadState.value = ApkDownloadState.Completed(
+                                        downloadId = downloadId,
+                                        fileName = fileName
+                                    )
+                                    _feedback.value = ActionFeedback(
+                                        isError = false,
+                                        message = "Downloaded $fileName. Open Downloads to install the update."
+                                    )
+                                    finished = true
+                                }
+                                DownloadManager.STATUS_FAILED -> {
+                                    val reason = if (reasonIdx >= 0) cursor.getInt(reasonIdx) else -1
+                                    _apkDownloadState.value = ApkDownloadState.Error(
+                                        "APK download failed (code $reason). Verify the GitHub Release asset exists or try browser download."
+                                    )
+                                    finished = true
+                                }
+                                else -> {
+                                    _apkDownloadState.value = ApkDownloadState.Downloading(
+                                        progressPercent = pct,
+                                        downloadedBytes = dlBytes,
+                                        totalBytes = effectiveTotal.coerceAtLeast(0L),
+                                        downloadId = downloadId
+                                    )
+                                }
+                            }
+                        } else {
+                            _apkDownloadState.value = ApkDownloadState.Error("Download was cancelled.")
+                            finished = true
+                        }
+                    }
+                    if (finished) break
+                    delay(400L)
+                }
+            }
+        }
+    }
+
+    fun openDownloadedApkInstaller(context: Context, fallbackUrl: String) {
+        val downloadsIntent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(downloadsIntent)
+        } catch (_: Exception) {
+            if (fallbackUrl.startsWith("https://")) {
+                try {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    )
+                } catch (_: Exception) {
+                    _feedback.value = ActionFeedback(true, "Open your system Downloads app to install ${AppConstants.APK_ASSET_NAME}.")
+                }
+            }
+        }
+    }
+
     fun registerUser(
         fullName: String,
         username: String,
@@ -311,10 +476,10 @@ class MainViewModel(
         }
     }
 
-    fun startTask(task: TaskItem) {
+    fun startTask(task: TaskItem, profile: UserProfile) {
         viewModelScope.launch {
             _isActionBusy.value = true
-            val res = taskRepository.startTask(task)
+            val res = taskRepository.startTask(task, profile)
             _isActionBusy.value = false
             res.onFailure { err ->
                 _feedback.value = ActionFeedback(true, err.message ?: "Could not start task.")
@@ -332,7 +497,7 @@ class MainViewModel(
             )
             _isActionBusy.value = false
             res.onSuccess { reward ->
-                _feedback.value = ActionFeedback(false, "Claimed PKR ${reward.toInt()} reward!")
+                _feedback.value = ActionFeedback(false, "Claimed PKR ${reward.toInt()} simulated reward!")
             }.onFailure { err ->
                 _feedback.value = ActionFeedback(true, err.message ?: "Could not claim reward.")
             }
@@ -412,15 +577,16 @@ class MainViewModel(
                 paymentAccountName = paymentAccountName,
                 paymentAccountNumber = paymentAccountNumber,
                 receiptStoragePath = uploaded?.storagePath,
-                receiptUrl = uploaded?.downloadUrl
+                receiptUrl = uploaded?.downloadUrl,
+                minDeposit = appSettings.value.minDeposit
             )
             _isActionBusy.value = false
             res.onSuccess { id ->
                 _receiptUploadState.value = ReceiptUploadState.Idle
-                _feedback.value = ActionFeedback(false, "Deposit $id submitted for admin review.")
+                _feedback.value = ActionFeedback(false, "Simulated demo deposit $id submitted for verification.")
                 onSubmitted()
             }.onFailure { err ->
-                _feedback.value = ActionFeedback(true, err.message ?: "Deposit request failed.")
+                _feedback.value = ActionFeedback(true, err.message ?: "Simulated deposit request failed.")
             }
         }
     }
@@ -433,13 +599,14 @@ class MainViewModel(
                 amount = amount,
                 paymentMethod = method,
                 accountReference = accountRef,
-                existingWithdrawals = withdrawals.value
+                existingWithdrawals = withdrawals.value,
+                minWithdrawal = appSettings.value.minWithdrawal
             )
             _isActionBusy.value = false
             res.onSuccess { id ->
-                _feedback.value = ActionFeedback(false, "Withdrawal $id submitted for admin review.")
+                _feedback.value = ActionFeedback(false, "Simulated demo withdrawal $id submitted for admin review.")
             }.onFailure { err ->
-                _feedback.value = ActionFeedback(true, err.message ?: "Withdrawal request failed.")
+                _feedback.value = ActionFeedback(true, err.message ?: "Simulated withdrawal request failed.")
             }
         }
     }

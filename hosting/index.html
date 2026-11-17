@@ -8,10 +8,14 @@
     :root {
       --bg: #070b09;
       --card: #0e1612;
+      --surface: #132019;
       --border: #1e3328;
       --green: #00d084;
+      --green-dim: rgba(0, 208, 132, 0.14);
       --text: #f3f7f5;
       --muted: #9eb5aa;
+      --danger: #ff6b6b;
+      --danger-bg: rgba(255, 107, 107, 0.12);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -25,7 +29,7 @@
       padding: 24px;
     }
     .card {
-      max-width: 520px;
+      max-width: 560px;
       width: 100%;
       background: var(--card);
       border: 1px solid var(--border);
@@ -35,7 +39,7 @@
     }
     .badge {
       display: inline-block;
-      background: rgba(0, 208, 132, 0.14);
+      background: var(--green-dim);
       color: var(--green);
       border: 1px solid rgba(0, 208, 132, 0.4);
       padding: 5px 12px;
@@ -43,10 +47,101 @@
       font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.6px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
     h1 { font-size: 28px; margin-bottom: 10px; }
-    p { color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+    p { color: var(--muted); line-height: 1.6; margin-bottom: 18px; }
+    .apk-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+    .apk-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .apk-title { font-size: 16px; font-weight: 700; color: var(--text); }
+    .version-pill {
+      background: var(--green-dim);
+      color: var(--green);
+      border: 1px solid rgba(0, 208, 132, 0.35);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .meta-item {
+      background: rgba(7, 11, 9, 0.55);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+    }
+    .meta-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .meta-value { font-size: 13px; font-weight: 700; color: var(--text); }
+    .release-notes {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      white-space: pre-line;
+      line-height: 1.5;
+    }
+    .progress-wrap {
+      display: none;
+      margin-top: 12px;
+      margin-bottom: 6px;
+    }
+    .progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      width: 0%;
+      height: 100%;
+      background: var(--green);
+      transition: width 0.2s ease;
+    }
+    .progress-text {
+      font-size: 12px;
+      color: var(--green);
+      margin-top: 6px;
+      font-weight: 600;
+    }
+    .error-banner {
+      display: none;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--danger-bg);
+      border: 1px solid rgba(255, 107, 107, 0.35);
+      color: var(--danger);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .notice-box {
+      background: rgba(0, 208, 132, 0.07);
+      border: 1px solid rgba(0, 208, 132, 0.28);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
+    .notice-box strong { color: var(--green); }
     .actions { display: flex; flex-direction: column; gap: 12px; }
     .btn {
       display: inline-flex;
@@ -58,9 +153,15 @@
       font-weight: 700;
       font-size: 15px;
       cursor: pointer;
+      border: none;
+      width: 100%;
     }
     .btn-primary { background: var(--green); color: #04140c; }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
     .btn-outline { border: 1px solid var(--border); color: var(--text); background: transparent; }
+    @media (max-width: 520px) {
+      .meta-grid { grid-template-columns: 1fr; }
+    }
   </style>
   <script>
     (function () {
@@ -76,11 +177,218 @@
   <main class="card">
     <span class="badge">OFFICIAL PLATFORM • BINACESMARTEARN.ONLINE</span>
     <h1>Binace Smart Earn</h1>
-    <p>Daily tasks, PKR wallet management, verified deposits &amp; withdrawals, and Rs. 100 referral commissions secured by Firebase.</p>
+    <p>Daily tasks, simulated PKR demo wallet, verified simulated deposit &amp; withdrawal flows, and Rs. 100 simulated referral commissions powered by Firebase.</p>
+
+    <section class="apk-box" aria-label="Download Official Android APK">
+      <div class="apk-header">
+        <span class="apk-title">Official Android APK</span>
+        <span class="version-pill" id="versionPill">Checking release...</span>
+      </div>
+      <div class="meta-grid">
+        <div class="meta-item">
+          <div class="meta-label">Latest Version</div>
+          <div class="meta-value" id="metaVersion">—</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">APK File Size</div>
+          <div class="meta-value" id="metaSize">—</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-label">Release Date</div>
+          <div class="meta-value" id="metaDate">—</div>
+        </div>
+      </div>
+      <div class="release-notes" id="releaseNotes">Fetching latest signed release metadata from GitHub Releases...</div>
+
+      <button class="btn btn-primary" id="downloadApkBtn" type="button">
+        Download BINACE-SMART-EARN.apk
+      </button>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-text" id="progressText">Downloading 0%...</div>
+      </div>
+
+      <div class="error-banner" id="errorBanner"></div>
+    </section>
+
+    <div class="notice-box">
+      <strong>Simulated Demo Platform Notice:</strong> All wallet balances, daily task rewards (PKR 20/task, up to PKR 200/day), referral commissions (PKR 100), deposits (min PKR 1,000), and withdrawals (min PKR 3,500) are simulated demo credits. No real-money deposit is required to unlock platform features.
+    </div>
+
     <div class="actions">
-      <a class="btn btn-primary" href="/signup">Open Signup Page</a>
-      <a class="btn btn-outline" href="https://whatsapp.com/channel/0029Vb9SL1bEFeXlCASyF41z" target="_blank" rel="noopener noreferrer">Official Support Channel</a>
+      <a class="btn btn-outline" href="/signup">Open Invite Signup Page</a>
+      <a class="btn btn-outline" href="https://whatsapp.com/channel/0029Vb9SL1bEFeXlCASyF41z" target="_blank" rel="noopener noreferrer">Official Support Channel (WhatsApp)</a>
     </div>
   </main>
+
+  <script>
+    (function () {
+      // Configure your GitHub repository slug after pushing source code (e.g. "your-org/binace-smart-earn")
+      // Can also be tested dynamically via ?repo=owner/repo
+      var DEFAULT_GITHUB_REPO = "";
+      var APK_ASSET_NAME = "BINACE-SMART-EARN.apk";
+
+      var params = new URLSearchParams(window.location.search);
+      var repoParam = (params.get("repo") || "").trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "").replace(/^\/+|\/+$/g, "");
+      var githubRepo = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repoParam) ? repoParam : DEFAULT_GITHUB_REPO;
+
+      var versionPill = document.getElementById("versionPill");
+      var metaVersion = document.getElementById("metaVersion");
+      var metaSize = document.getElementById("metaSize");
+      var metaDate = document.getElementById("metaDate");
+      var releaseNotes = document.getElementById("releaseNotes");
+      var downloadBtn = document.getElementById("downloadApkBtn");
+      var progressWrap = document.getElementById("progressWrap");
+      var progressFill = document.getElementById("progressFill");
+      var progressText = document.getElementById("progressText");
+      var errorBanner = document.getElementById("errorBanner");
+
+      var latestDownloadUrl = "";
+      var latestFileName = APK_ASSET_NAME;
+
+      function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return "Unavailable";
+        var mb = bytes / (1024 * 1024);
+        if (mb >= 1) return mb.toFixed(1) + " MB";
+        return Math.max(1, Math.round(bytes / 1024)) + " KB";
+      }
+
+      function formatDate(iso) {
+        if (!iso) return "Pending";
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return iso.slice(0, 10);
+        return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+      }
+
+      function showError(htmlMessage) {
+        errorBanner.innerHTML = htmlMessage;
+        errorBanner.style.display = "block";
+      }
+
+      function hideError() {
+        errorBanner.style.display = "none";
+        errorBanner.innerHTML = "";
+      }
+
+      if (!githubRepo) {
+        versionPill.textContent = "Repo Setup Required";
+        metaVersion.textContent = "v1.0.0";
+        metaSize.textContent = "Pending Release";
+        metaDate.textContent = "Pending";
+        releaseNotes.textContent = "Push this repository to GitHub, run the Android Release APK workflow, and set DEFAULT_GITHUB_REPO in hosting/index.html (or test with ?repo=owner/repo).";
+        downloadBtn.disabled = true;
+        downloadBtn.textContent = "Configure GitHub Repository to Enable Download";
+        return;
+      }
+
+      latestDownloadUrl = "https://github.com/" + githubRepo + "/releases/latest/download/" + APK_ASSET_NAME;
+
+      fetch("https://api.github.com/repos/" + githubRepo + "/releases/latest", {
+        headers: { "Accept": "application/vnd.github+json" }
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error("GitHub Releases returned HTTP " + res.status);
+          return res.json();
+        })
+        .then(function (release) {
+          var version = release.tag_name || release.name || "Latest";
+          var assets = Array.isArray(release.assets) ? release.assets : [];
+          var apkAsset = assets.find(function (a) {
+            return (a.name || "").toLowerCase() === APK_ASSET_NAME.toLowerCase();
+          }) || assets.find(function (a) {
+            return (a.name || "").toLowerCase().endsWith(".apk");
+          });
+
+          if (apkAsset && apkAsset.browser_download_url) {
+            latestDownloadUrl = apkAsset.browser_download_url;
+            latestFileName = apkAsset.name || APK_ASSET_NAME;
+          }
+
+          versionPill.textContent = version;
+          metaVersion.textContent = version;
+          metaSize.textContent = apkAsset ? formatBytes(apkAsset.size) : "See GitHub";
+          metaDate.textContent = formatDate(release.published_at);
+          releaseNotes.textContent = (release.body || "Signed Android release APK ready for installation.").trim().slice(0, 320);
+          downloadBtn.textContent = "Download APK (" + version + ")";
+        })
+        .catch(function (err) {
+          versionPill.textContent = "Direct Link";
+          metaVersion.textContent = "Latest";
+          metaSize.textContent = "GitHub Release";
+          metaDate.textContent = "Available";
+          releaseNotes.textContent = "Could not query GitHub release metadata (" + err.message + "). You can still use the direct release download button below.";
+        });
+
+      downloadBtn.addEventListener("click", function () {
+        if (!latestDownloadUrl) return;
+        hideError();
+        downloadBtn.disabled = true;
+        progressWrap.style.display = "block";
+        progressFill.style.width = "0%";
+        progressText.textContent = "Connecting to GitHub Releases...";
+
+        fetch(latestDownloadUrl)
+          .then(function (res) {
+            if (!res.ok) throw new Error("Download failed (HTTP " + res.status + ")");
+            if (!res.body || !res.body.getReader) {
+              window.location.href = latestDownloadUrl;
+              return null;
+            }
+            var total = parseInt(res.headers.get("content-length") || "0", 10);
+            var loaded = 0;
+            var chunks = [];
+            var reader = res.body.getReader();
+
+            function pump() {
+              return reader.read().then(function (result) {
+                if (result.done) {
+                  return new Blob(chunks, { type: "application/vnd.android.package-archive" });
+                }
+                chunks.push(result.value);
+                loaded += result.value.byteLength;
+                if (total > 0) {
+                  var pct = Math.min(100, Math.round((loaded * 100) / total));
+                  progressFill.style.width = pct + "%";
+                  progressText.textContent = "Downloading " + pct + "% (" + formatBytes(loaded) + " / " + formatBytes(total) + ")";
+                } else {
+                  progressFill.style.width = "55%";
+                  progressText.textContent = "Downloading " + formatBytes(loaded) + "...";
+                }
+                return pump();
+              });
+            }
+            return pump();
+          })
+          .then(function (blob) {
+            if (!blob) {
+              downloadBtn.disabled = false;
+              return;
+            }
+            progressFill.style.width = "100%";
+            progressText.textContent = "Download complete! Opening " + latestFileName + "...";
+            var blobUrl = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = latestFileName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 10000);
+            downloadBtn.disabled = false;
+          })
+          .catch(function (err) {
+            downloadBtn.disabled = false;
+            progressWrap.style.display = "none";
+            showError(
+              "Streaming download blocked or failed (" + err.message + "). " +
+              '<a href="' + latestDownloadUrl + '" style="color:#00d084;font-weight:700;text-decoration:underline;" rel="noopener noreferrer">Open direct GitHub APK link</a>.'
+            );
+          });
+      });
+    })();
+  </script>
 </body>
 </html>

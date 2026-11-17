@@ -57,16 +57,11 @@ service cloud.firestore {
     }
 
     function isValidUserProfile(data) {
-      return data.keys().hasAll([
+      return data.keys().hasOnly([
                'uid', 'fullName', 'username', 'email', 'phone', 'referralCode',
-               'walletId', 'realBalance', 'realRewardBalance', 'todayTaskEarnings',
-               'todayTaskDate', 'totalEarnedTasks', 'completedTasksCount',
-               'totalReferrals', 'totalReferralCommission', 'accountStatus', 'role',
-               'createdAt', 'updatedAt'
-             ]) &&
-             data.keys().hasOnly([
-               'uid', 'fullName', 'username', 'email', 'phone', 'referralCode',
-               'referredBy', 'referredByUid', 'walletId', 'realBalance',
+               'referredBy', 'referredByUid', 'walletId', 'isVerified',
+               'firstDepositStatus', 'firstDepositAmount', 'verifiedAt',
+               'demoBalance', 'demoRewardBalance', 'realBalance',
                'realRewardBalance', 'todayTaskEarnings', 'todayTaskDate',
                'totalEarnedTasks', 'completedTasksCount', 'totalReferrals',
                'totalReferralCommission', 'lastClaimedUserTaskId', 'accountStatus',
@@ -81,6 +76,12 @@ service cloud.firestore {
              isOptionalString(data, 'referredBy', 24) &&
              isOptionalString(data, 'referredByUid', 128) &&
              data.walletId is string && data.walletId.size() >= 6 && data.walletId.size() <= 40 &&
+             data.isVerified is bool &&
+             data.firstDepositStatus in ['none', 'pending', 'approved', 'rejected'] &&
+             data.firstDepositAmount is number && data.firstDepositAmount >= 0 &&
+             (!('verifiedAt' in data) || data.verifiedAt == null || isValidTimestamp(data.verifiedAt)) &&
+             data.demoBalance is number && data.demoBalance >= 0 &&
+             data.demoRewardBalance is number && data.demoRewardBalance >= 0 &&
              data.realBalance is number && data.realBalance >= 0 &&
              data.realRewardBalance is number && data.realRewardBalance >= 0 &&
              data.todayTaskEarnings is number && data.todayTaskEarnings >= 0 &&
@@ -97,12 +98,7 @@ service cloud.firestore {
     }
 
     function isValidWalletAccount(data) {
-      return data.keys().hasAll([
-               'uid', 'walletId', 'balance', 'depositBalance', 'rewardBalance',
-               'todayTaskEarnings', 'todayTaskDate', 'totalEarnedTasks',
-               'totalReferralCommission', 'currency', 'createdAt', 'updatedAt'
-             ]) &&
-             data.keys().hasOnly([
+      return data.keys().hasOnly([
                'uid', 'walletId', 'balance', 'depositBalance', 'rewardBalance',
                'todayTaskEarnings', 'todayTaskDate', 'totalEarnedTasks',
                'totalReferralCommission', 'lastClaimedTaskCompletionId',
@@ -368,6 +364,8 @@ service cloud.firestore {
     function isExactRewardDelta(reward) {
       return incoming().realRewardBalance >= existing().realRewardBalance + reward - 0.001 &&
              incoming().realRewardBalance <= existing().realRewardBalance + reward + 0.001 &&
+             incoming().demoRewardBalance >= existing().demoRewardBalance + reward - 0.001 &&
+             incoming().demoRewardBalance <= existing().demoRewardBalance + reward + 0.001 &&
              incoming().totalEarnedTasks >= existing().totalEarnedTasks + reward - 0.001 &&
              incoming().totalEarnedTasks <= existing().totalEarnedTasks + reward + 0.001 &&
              (
@@ -388,8 +386,9 @@ service cloud.firestore {
     }
 
     function isAtomicTaskRewardUpdate(uid) {
-      return incoming().diff(existing()).affectedKeys().hasOnly([
-               'realRewardBalance', 'todayTaskEarnings', 'todayTaskDate',
+      return existing().isVerified == true &&
+             incoming().diff(existing()).affectedKeys().hasOnly([
+               'realRewardBalance', 'demoRewardBalance', 'todayTaskEarnings', 'todayTaskDate',
                'totalEarnedTasks', 'completedTasksCount', 'lastClaimedUserTaskId', 'updatedAt'
              ]) &&
              incoming().lastClaimedUserTaskId is string &&
@@ -397,6 +396,16 @@ service cloud.firestore {
              incoming().completedTasksCount == existing().completedTasksCount + 1 &&
              isTaskCompletionNotYetClaimed(incoming().lastClaimedUserTaskId) &&
              verifyClaimedCompletion(uid, getAfter(/databases/$(database)/documents/dailyTaskCompletions/$(incoming().lastClaimedUserTaskId)).data);
+    }
+
+    function isFirstDepositPendingUpdate() {
+      return existing().isVerified == false &&
+             existing().firstDepositStatus in ['none', 'rejected'] &&
+             incoming().diff(existing()).affectedKeys().hasOnly([
+               'firstDepositStatus', 'firstDepositAmount', 'updatedAt'
+             ]) &&
+             incoming().firstDepositStatus == 'pending' &&
+             incoming().firstDepositAmount >= 1000;
     }
 
     function isExactWalletRewardDelta(reward) {
@@ -451,6 +460,12 @@ service cloud.firestore {
                        isOwner(uid) &&
                        isValidUserProfile(incoming()) &&
                        incoming().uid == uid &&
+                       incoming().isVerified == false &&
+                       incoming().firstDepositStatus == 'none' &&
+                       incoming().firstDepositAmount == 0 &&
+                       (!('verifiedAt' in incoming()) || incoming().verifiedAt == null) &&
+                       incoming().demoBalance == 0 &&
+                       incoming().demoRewardBalance == 0 &&
                        incoming().realBalance == 0 &&
                        incoming().realRewardBalance == 0 &&
                        incoming().todayTaskEarnings == 0 &&
@@ -462,10 +477,9 @@ service cloud.firestore {
                        incoming().role == 'user';
 
       allow update: if isValidId(uid) &&
-                       isValidUserProfile(incoming()) &&
                        incoming().uid == existing().uid &&
                        incoming().createdAt == existing().createdAt && (
-                         isAdmin() ||
+                         (isAdmin() && isValidUserProfile(incoming())) ||
                          (
                            isOwner(uid) &&
                            existing().accountStatus == 'active' &&
@@ -474,10 +488,18 @@ service cloud.firestore {
                            incoming().walletId == existing().walletId &&
                            incoming().referralCode == existing().referralCode &&
                            incoming().email == existing().email &&
+                           incoming().isVerified == existing().isVerified &&
                            incoming().get('referredBy', '') == existing().get('referredBy', '') &&
                            incoming().get('referredByUid', '') == existing().get('referredByUid', '') &&
+                           isValidTimestamp(incoming().updatedAt) &&
                            (
-                             incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username', 'phone', 'updatedAt']) ||
+                             (
+                               incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'username', 'phone', 'updatedAt']) &&
+                               incoming().fullName is string && incoming().fullName.size() >= 2 && incoming().fullName.size() <= 80 &&
+                               incoming().username is string && incoming().username.size() >= 3 && incoming().username.size() <= 30 &&
+                               incoming().phone is string && incoming().phone.size() >= 5 && incoming().phone.size() <= 24
+                             ) ||
+                             isFirstDepositPendingUpdate() ||
                              isAtomicTaskRewardUpdate(uid)
                            )
                          )
@@ -558,6 +580,7 @@ service cloud.firestore {
                        completionId == incoming().uid + '_' + incoming().taskId + '_' + incoming().dateKey &&
                        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'active' &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified == true &&
                        exists(/databases/$(database)/documents/tasks/$(incoming().taskId)) &&
                        get(/databases/$(database)/documents/tasks/$(incoming().taskId)).data.isActive == true &&
                        incoming().rewardPoints == get(/databases/$(database)/documents/tasks/$(incoming().taskId)).data.rewardPoints;
@@ -615,6 +638,7 @@ service cloud.firestore {
                        incoming().depositId == depositId &&
                        incoming().uid == request.auth.uid &&
                        incoming().userUid == request.auth.uid &&
+                       incoming().amount >= 1000 &&
                        incoming().status in ['PENDING', 'pending'] &&
                        !('approvedAt' in incoming()) &&
                        !('reviewedAt' in incoming()) &&
@@ -650,11 +674,17 @@ service cloud.firestore {
                        isSignedIn() &&
                        isValidWithdrawalRequest(incoming()) &&
                        incoming().uid == request.auth.uid &&
+                       incoming().amount >= 3500 &&
                        incoming().status == 'pending' &&
                        !('approvedAt' in incoming()) &&
                        !('adminNote' in incoming()) &&
                        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'active' &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isVerified == true &&
+                       incoming().amount <= (
+                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.demoBalance +
+                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.demoRewardBalance
+                       ) &&
                        incoming().amount <= (
                          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.realBalance +
                          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.realRewardBalance

@@ -1,6 +1,7 @@
 package com.example
 
 import android.net.Uri
+import com.example.data.model.AppConstants
 import com.example.data.model.AppSettings
 import com.example.data.repository.AppUpdateRepository
 import com.example.data.repository.GitHubAssetDto
@@ -9,7 +10,6 @@ import com.example.data.repository.GitHubReleaseDto
 import com.example.util.ReferralLinkHelper
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -48,7 +48,7 @@ class ReferralAndUpdateTest {
 
         val message = ReferralLinkHelper.buildShareMessage("USER123")
         assertTrue(message.contains("https://binacesmartearn.online/signup?ref=USER123"))
-        assertFalse(message.contains("demo", ignoreCase = true))
+        assertTrue(message.contains("simulated", ignoreCase = true))
         assertTrue(ReferralLinkHelper.whatsAppShareUrl(message).startsWith("https://wa.me/?text="))
         assertTrue(ReferralLinkHelper.telegramShareUrl(link, message).startsWith("https://t.me/share/url?"))
         assertTrue(ReferralLinkHelper.facebookShareUrl(link, message).startsWith("https://www.facebook.com/sharer/sharer.php?"))
@@ -62,7 +62,7 @@ class ReferralAndUpdateTest {
         assertTrue(AppUpdateRepository.compareVersions("0.9.5", "1.0.0") < 0)
 
         assertEquals(
-            "https://github.com/acme/binace-smart-earn/releases/latest/download/binace-smart-earn-latest.apk",
+            "https://github.com/acme/binace-smart-earn/releases/latest/download/${AppConstants.APK_ASSET_NAME}",
             AppUpdateRepository.buildPublicLatestApkUrl("https://github.com/acme/binace-smart-earn")
         )
 
@@ -73,14 +73,17 @@ class ReferralAndUpdateTest {
                     name = "BINACE SMART EARN v1.0.3",
                     body = "Improved wallet performance and signed release.",
                     htmlUrl = "https://github.com/$owner/$repo/releases/tag/v1.0.3",
+                    publishedAt = "2026-11-16T10:30:00Z",
                     assets = listOf(
                         GitHubAssetDto(
                             name = "binace-smart-earn-v1.0.3.apk",
-                            browserDownloadUrl = "https://github.com/$owner/$repo/releases/download/v1.0.3/binace-smart-earn-v1.0.3.apk"
+                            browserDownloadUrl = "https://github.com/$owner/$repo/releases/download/v1.0.3/binace-smart-earn-v1.0.3.apk",
+                            size = 18_450_000L
                         ),
                         GitHubAssetDto(
-                            name = "binace-smart-earn-latest.apk",
-                            browserDownloadUrl = "https://github.com/$owner/$repo/releases/latest/download/binace-smart-earn-latest.apk"
+                            name = AppConstants.APK_ASSET_NAME,
+                            browserDownloadUrl = "https://github.com/$owner/$repo/releases/latest/download/${AppConstants.APK_ASSET_NAME}",
+                            size = 18_450_000L
                         )
                     )
                 )
@@ -97,8 +100,10 @@ class ReferralAndUpdateTest {
 
         assertTrue(result.isUpdateAvailable)
         assertEquals("1.0.3", result.latestVersionName)
+        assertEquals(18_450_000L, result.apkFileSizeBytes)
+        assertEquals("2026-11-16T10:30:00Z", result.publishedAt)
         assertEquals(
-            "https://github.com/acme/binace-smart-earn/releases/latest/download/binace-smart-earn-latest.apk",
+            "https://github.com/acme/binace-smart-earn/releases/latest/download/${AppConstants.APK_ASSET_NAME}",
             result.downloadUrl
         )
         assertEquals("Improved wallet performance and signed release.", result.releaseNotes)

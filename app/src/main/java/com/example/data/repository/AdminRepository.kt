@@ -144,8 +144,8 @@ class AdminRepository(
                         "maxDailyReward" to AppConstants.DEFAULT_MAX_DAILY_REWARD,
                         "currency" to AppConstants.DEFAULT_CURRENCY,
                         "dailyTaskLimit" to AppConstants.DEFAULT_DAILY_TASK_LIMIT,
-                        "minWithdrawal" to 100.0,
-                        "minDeposit" to 100.0,
+                        "minWithdrawal" to AppConstants.DEFAULT_MIN_WITHDRAWAL,
+                        "minDeposit" to AppConstants.DEFAULT_MIN_DEPOSIT,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
@@ -482,6 +482,48 @@ class AdminRepository(
         }
     }
 
+    suspend fun verifyUserAccount(user: UserProfile, verified: Boolean): Result<Unit> {
+        val (adminUid, adminEmail) = try {
+            requireAdminIdentity()
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+        return try {
+            val batch = db.batch()
+            val updates = mutableMapOf<String, Any?>(
+                "isVerified" to verified,
+                "firstDepositStatus" to if (verified) "approved" else "none",
+                "verifiedAt" to if (verified) FieldValue.serverTimestamp() else null,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            batch.update(db.collection("users").document(user.uid), updates)
+            val logId = "LOG-${UUID.randomUUID().toString().take(8)}"
+            batch.set(
+                db.collection("adminLogs").document(logId),
+                mapOf(
+                    "adminUid" to adminUid,
+                    "adminEmail" to adminEmail,
+                    "action" to if (verified) "VERIFY_USER_ACCOUNT" else "REVOKE_USER_VERIFICATION",
+                    "targetCollection" to "users",
+                    "targetId" to user.uid,
+                    "details" to if (verified) {
+                        "Manually verified @${user.username} and unlocked simulated demo features."
+                    } else {
+                        "Revoked verification status for @${user.username}."
+                    },
+                    "createdAt" to FieldValue.serverTimestamp()
+                )
+            )
+            batch.commit().await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, "users/${user.uid}")
+            Result.failure(e)
+        }
+    }
+
     suspend fun approveDeposit(
         deposit: DepositRequest,
         adminNote: String = "Verified by admin",
@@ -553,19 +595,26 @@ class AdminRepository(
                     )
                 )
 
-                tx.update(
-                    userRef,
-                    mapOf(
-                        "realBalance" to (user.realBalance + deposit.amount),
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
+                val newDepositBal = user.effectiveDepositBalance + deposit.amount
+                val userUpdates = mutableMapOf<String, Any>(
+                    "realBalance" to newDepositBal,
+                    "demoBalance" to newDepositBal,
+                    "updatedAt" to FieldValue.serverTimestamp()
                 )
+                if (!user.isVerified) {
+                    userUpdates["isVerified"] = true
+                    userUpdates["firstDepositStatus"] = "approved"
+                    userUpdates["firstDepositAmount"] = maxOf(user.firstDepositAmount, deposit.amount)
+                    userUpdates["verifiedAt"] = FieldValue.serverTimestamp()
+                }
+                tx.update(userRef, userUpdates)
+
                 if (userWallet != null) {
                     tx.update(
                         userWalletRef,
                         mapOf(
-                            "balance" to (userWallet.balance + deposit.amount),
-                            "depositBalance" to (userWallet.depositBalance + deposit.amount),
+                            "balance" to (newDepositBal + user.effectiveRewardBalance),
+                            "depositBalance" to newDepositBal,
                             "updatedAt" to FieldValue.serverTimestamp()
                         )
                     )
@@ -578,7 +627,7 @@ class AdminRepository(
                         "type" to "deposit",
                         "amount" to deposit.amount,
                         "status" to "approved",
-                        "description" to "Deposit (${deposit.paymentMethod} • ${deposit.effectiveReference})",
+                        "description" to "Simulated Demo Deposit (${deposit.paymentMethod} • ${deposit.effectiveReference})",
                         "referenceId" to depositDocId,
                         "createdAt" to FieldValue.serverTimestamp()
                     )
@@ -619,10 +668,12 @@ class AdminRepository(
                     tx.set(commissionRef, commPayload)
 
                     if (autoApproveReferralCommission && referrer != null && referrerUserRef != null) {
+                        val newReferrerReward = referrer.effectiveRewardBalance + commissionAmount
                         tx.update(
                             referrerUserRef,
                             mapOf(
-                                "realRewardBalance" to (referrer.realRewardBalance + commissionAmount),
+                                "realRewardBalance" to newReferrerReward,
+                                "demoRewardBalance" to newReferrerReward,
                                 "totalReferrals" to (referrer.totalReferrals + 1L),
                                 "totalReferralCommission" to (referrer.totalReferralCommission + commissionAmount),
                                 "updatedAt" to FieldValue.serverTimestamp()
@@ -699,6 +750,12 @@ class AdminRepository(
                     throw IllegalStateException("Deposit has already been reviewed ($currentStatus).")
                 }
 
+                val userRef = db.collection("users").document(targetUid)
+                val userSnap = tx.get(userRef)
+                val user = if (userSnap.exists()) {
+                    userSnap.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                } else null
+
                 tx.update(
                     depositRef,
                     mapOf(
@@ -709,6 +766,15 @@ class AdminRepository(
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 )
+                if (user != null && !user.isVerified && user.firstDepositStatus == "pending") {
+                    tx.update(
+                        userRef,
+                        mapOf(
+                            "firstDepositStatus" to "rejected",
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    )
+                }
                 tx.set(
                     db.collection("transactions").document("tx_dep_rej_$depositDocId"),
                     mapOf(
@@ -716,7 +782,7 @@ class AdminRepository(
                         "type" to "deposit",
                         "amount" to deposit.amount,
                         "status" to "rejected",
-                        "description" to "Rejected Deposit (${deposit.effectiveReference})",
+                        "description" to "Rejected Simulated Deposit (${deposit.effectiveReference})",
                         "referenceId" to depositDocId,
                         "createdAt" to FieldValue.serverTimestamp()
                     )
@@ -764,10 +830,12 @@ class AdminRepository(
             val walletSnap = walletRef.get().await()
             val walletExists = walletSnap.exists()
 
-            val deductFromReal = minOf(user.realBalance, withdrawal.amount)
+            val currentDeposit = user.effectiveDepositBalance
+            val currentReward = user.effectiveRewardBalance
+            val deductFromReal = minOf(currentDeposit, withdrawal.amount)
             val remaining = withdrawal.amount - deductFromReal
-            val newRealBalance = (user.realBalance - deductFromReal).coerceAtLeast(0.0)
-            val newRewardBalance = (user.realRewardBalance - remaining).coerceAtLeast(0.0)
+            val newRealBalance = (currentDeposit - deductFromReal).coerceAtLeast(0.0)
+            val newRewardBalance = (currentReward - remaining).coerceAtLeast(0.0)
 
             val batch = db.batch()
             batch.update(
@@ -784,6 +852,8 @@ class AdminRepository(
                 mapOf(
                     "realBalance" to newRealBalance,
                     "realRewardBalance" to newRewardBalance,
+                    "demoBalance" to newRealBalance,
+                    "demoRewardBalance" to newRewardBalance,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             )
@@ -952,10 +1022,12 @@ class AdminRepository(
                     )
                 )
             }
+            val updatedReferrerReward = referrer.effectiveRewardBalance + amount
             batch.update(
                 referrerRef,
                 mapOf(
-                    "realRewardBalance" to (referrer.realRewardBalance + amount),
+                    "realRewardBalance" to updatedReferrerReward,
+                    "demoRewardBalance" to updatedReferrerReward,
                     "totalReferrals" to (referrer.totalReferrals + 1L),
                     "totalReferralCommission" to (referrer.totalReferralCommission + amount),
                     "updatedAt" to FieldValue.serverTimestamp()

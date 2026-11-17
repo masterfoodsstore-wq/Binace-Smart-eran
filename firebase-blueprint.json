@@ -26,6 +26,12 @@
         "referredBy": { "type": "string" },
         "referredByUid": { "type": "string" },
         "walletId": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "firstDepositStatus": { "type": "string", "enum": ["none", "pending", "approved", "rejected"] },
+        "firstDepositAmount": { "type": "number" },
+        "verifiedAt": { "type": "string", "format": "date-time" },
+        "demoBalance": { "type": "number" },
+        "demoRewardBalance": { "type": "number" },
         "realBalance": { "type": "number" },
         "realRewardBalance": { "type": "number" },
         "todayTaskEarnings": { "type": "number" },
@@ -42,8 +48,9 @@
       },
       "required": [
         "uid", "fullName", "username", "email", "phone", "referralCode",
-        "walletId", "realBalance", "realRewardBalance", "todayTaskEarnings",
-        "todayTaskDate", "totalEarnedTasks", "completedTasksCount",
+        "walletId", "isVerified", "firstDepositStatus", "firstDepositAmount",
+        "demoBalance", "demoRewardBalance", "realBalance", "realRewardBalance",
+        "todayTaskEarnings", "todayTaskDate", "totalEarnedTasks", "completedTasksCount",
         "totalReferrals", "totalReferralCommission", "accountStatus", "role",
         "createdAt", "updatedAt"
       ]

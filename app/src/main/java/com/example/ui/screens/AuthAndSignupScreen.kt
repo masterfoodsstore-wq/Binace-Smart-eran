@@ -106,7 +106,7 @@ fun SignInScreen(
                             .clip(RoundedCornerShape(24.dp))
                     )
                     Spacer(modifier = Modifier.height(18.dp))
-                    SimulatedBadge(label = "SMART EARN FINTECH")
+                    SimulatedBadge(label = "SIMULATED DEMO FINTECH")
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
                         text = "Binace Smart Earn",
@@ -116,7 +116,7 @@ fun SignInScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Daily fintech tasks, PKR wallet tracking, and PKR 100 referral commissions secured by Firebase.",
+                        text = "Simulated daily tasks, demo PKR wallet tracking, and PKR 100 simulated referral rewards secured by Firebase.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -172,17 +172,17 @@ fun SignInScreen(
                             FeatureBullet(
                                 icon = Icons.Default.TaskAlt,
                                 title = "Daily Verified Tasks",
-                                subtitle = "Complete daily logins, educational briefs, and activities for PKR rewards."
+                                subtitle = "Complete daily logins, educational briefs, and activities for simulated PKR rewards."
                             )
                             FeatureBullet(
                                 icon = Icons.Default.CardGiftcard,
-                                title = "PKR 100 Referral Rewards",
-                                subtitle = "Share your invite link and earn PKR 100 per verified friend deposit."
+                                title = "PKR 100 Simulated Referral Rewards",
+                                subtitle = "Share your invite link for simulated PKR 100 demo credit after first deposit verification."
                             )
                             FeatureBullet(
                                 icon = Icons.Default.Wallet,
-                                title = "Smart Wallet & Ledger",
-                                subtitle = "Submit deposits, track withdrawals, and inspect full transaction history."
+                                title = "Simulated Demo Wallet & Ledger",
+                                subtitle = "Submit simulated deposits, track demo withdrawals, and inspect full transaction history."
                             )
                             FeatureBullet(
                                 icon = Icons.Default.Security,

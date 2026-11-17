@@ -28,6 +28,11 @@ function validUserDoc(uid, username, referralCode, extra = {}) {
     phone: "+923001234567",
     referralCode,
     walletId: `BSE-WLT-${uid.slice(-4)}`,
+    isVerified: false,
+    firstDepositStatus: "none",
+    firstDepositAmount: 0,
+    demoBalance: 0,
+    demoRewardBalance: 0,
     realBalance: 0,
     realRewardBalance: 0,
     todayTaskEarnings: 0,
@@ -160,7 +165,10 @@ test("Email spoofing test: unverified admin email cannot access admin collection
   await assertFails(spoofDb.collection("adminLogs").get());
 });
 
-test("Canonical 10-task bootstrap & atomic dailyTaskCompletions + wallets claim prevents duplicates", async () => {
+test("Canonical 10-task bootstrap & verification gate + atomic dailyTaskCompletions claim prevents duplicates", async () => {
+  const adminDb = testEnv
+    .authenticatedContext(ADMIN_UID, { email: ADMIN_EMAIL, email_verified: true })
+    .firestore();
   const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
 
   await assertSucceeds(
@@ -193,8 +201,38 @@ test("Canonical 10-task bootstrap & atomic dailyTaskCompletions + wallets claim 
     })
   );
 
-  // Start task
+  // Unverified user CANNOT self-verify or start a daily task
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      isVerified: true,
+      updatedAt: serverTimestamp(),
+    })
+  );
   const utId = `${ALICE_UID}_task_01_daily_login_2026-11-14`;
+  await assertFails(
+    aliceDb.collection("dailyTaskCompletions").doc(utId).set({
+      uid: ALICE_UID,
+      taskId: "task_01_daily_login",
+      taskTitle: "Daily login check-in",
+      dateKey: "2026-11-14",
+      status: "in_progress",
+      rewardPoints: 20,
+      startedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Admin verifies Alice's account
+  await assertSucceeds(
+    adminDb.collection("users").doc(ALICE_UID).update({
+      isVerified: true,
+      firstDepositStatus: "approved",
+      verifiedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Now verified user can start task
   await assertSucceeds(
     aliceDb.collection("dailyTaskCompletions").doc(utId).set({
       uid: ALICE_UID,
@@ -226,6 +264,7 @@ test("Canonical 10-task bootstrap & atomic dailyTaskCompletions + wallets claim 
   });
   batch.update(aliceDb.collection("users").doc(ALICE_UID), {
     realRewardBalance: 20,
+    demoRewardBalance: 20,
     todayTaskEarnings: 20,
     todayTaskDate: "2026-11-14",
     totalEarnedTasks: 20,
@@ -248,6 +287,7 @@ test("Canonical 10-task bootstrap & atomic dailyTaskCompletions + wallets claim 
   const dupBatch = aliceDb.batch();
   dupBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
     realRewardBalance: 40,
+    demoRewardBalance: 40,
     todayTaskEarnings: 40,
     todayTaskDate: "2026-11-14",
     totalEarnedTasks: 40,
@@ -364,7 +404,37 @@ test("Deposit with paymentMethod, withdrawal, and PKR 100 referral commission fl
     })
   );
 
-  // Bob submits pending deposit with paymentMethod + atomic depositReferences guard
+  // Deposit below PKR 1,000 minimum MUST fail
+  const lowDepBatch = bobDb.batch();
+  lowDepBatch.set(bobDb.collection("deposits").doc("dep_low"), {
+    depositId: "dep_low",
+    uid: BOB_UID,
+    userUid: BOB_UID,
+    username: "bobuser",
+    fullName: "bobuser Full",
+    userEmail: "bobuser@example.com",
+    userPhone: "+923001234567",
+    amount: 500,
+    paymentMethod: "EasyPaisa",
+    paymentAccountName: "Binace Merchant",
+    paymentAccountNumber: "03001112233",
+    reference: "TXN-LOW-500",
+    transactionReference: "TXN-LOW-500",
+    refKey: "TXN-LOW-500",
+    status: "PENDING",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  lowDepBatch.set(bobDb.collection("depositReferences").doc("TXN-LOW-500"), {
+    refKey: "TXN-LOW-500",
+    transactionReference: "TXN-LOW-500",
+    depositId: "dep_low",
+    userUid: BOB_UID,
+    createdAt: serverTimestamp(),
+  });
+  await assertFails(lowDepBatch.commit());
+
+  // Bob submits pending simulated deposit >= 1,000 (4,000 PKR) + atomic depositReferences + firstDepositStatus=pending
   const depBatch = bobDb.batch();
   depBatch.set(bobDb.collection("deposits").doc("dep_1"), {
     depositId: "dep_1",
@@ -374,7 +444,7 @@ test("Deposit with paymentMethod, withdrawal, and PKR 100 referral commission fl
     fullName: "bobuser Full",
     userEmail: "bobuser@example.com",
     userPhone: "+923001234567",
-    amount: 500,
+    amount: 4000,
     paymentMethod: "EasyPaisa",
     paymentAccountName: "Binace Merchant",
     paymentAccountNumber: "03001112233",
@@ -394,6 +464,11 @@ test("Deposit with paymentMethod, withdrawal, and PKR 100 referral commission fl
     userUid: BOB_UID,
     createdAt: serverTimestamp(),
   });
+  depBatch.update(bobDb.collection("users").doc(BOB_UID), {
+    firstDepositStatus: "pending",
+    firstDepositAmount: 4000,
+    updatedAt: serverTimestamp(),
+  });
   await assertSucceeds(depBatch.commit());
 
   // Duplicate transaction reference by another user (or same user) MUST fail!
@@ -406,7 +481,7 @@ test("Deposit with paymentMethod, withdrawal, and PKR 100 referral commission fl
     fullName: "alice Full",
     userEmail: "alice@example.com",
     userPhone: "+923001234567",
-    amount: 500,
+    amount: 1000,
     paymentMethod: "EasyPaisa",
     paymentAccountName: "Binace Merchant",
     paymentAccountNumber: "03001112233",
@@ -487,7 +562,7 @@ test("Deposit with paymentMethod, withdrawal, and PKR 100 referral commission fl
     })
   );
 
-  // Admin approves Bob's deposit & credits PKR 100 commission to Alice
+  // Admin approves Bob's deposit -> auto-verifies Bob, credits 4000 PKR, & credits PKR 100 commission to Alice
   const adminBatch = adminDb.batch();
   adminBatch.update(adminDb.collection("deposits").doc("dep_1"), {
     status: "APPROVED",
@@ -498,12 +573,16 @@ test("Deposit with paymentMethod, withdrawal, and PKR 100 referral commission fl
     updatedAt: serverTimestamp(),
   });
   adminBatch.update(adminDb.collection("users").doc(BOB_UID), {
-    realBalance: 500,
+    isVerified: true,
+    firstDepositStatus: "approved",
+    verifiedAt: serverTimestamp(),
+    realBalance: 4000,
+    demoBalance: 4000,
     updatedAt: serverTimestamp(),
   });
   adminBatch.update(adminDb.collection("wallets").doc(BOB_UID), {
-    balance: 500,
-    depositBalance: 500,
+    balance: 4000,
+    depositBalance: 4000,
     updatedAt: serverTimestamp(),
   });
   adminBatch.update(adminDb.collection("referrals").doc(BOB_UID), {
@@ -526,6 +605,7 @@ test("Deposit with paymentMethod, withdrawal, and PKR 100 referral commission fl
   });
   adminBatch.update(adminDb.collection("users").doc(ALICE_UID), {
     realRewardBalance: 100,
+    demoRewardBalance: 100,
     totalReferrals: 1,
     totalReferralCommission: 100,
     updatedAt: serverTimestamp(),
@@ -547,12 +627,26 @@ test("Deposit with paymentMethod, withdrawal, and PKR 100 referral commission fl
     })
   );
 
-  // Now Bob has 500 balance and can submit a withdrawal request of 200
+  // Withdrawal below PKR 3,500 minimum MUST fail even for verified Bob with 4,000 balance
+  await assertFails(
+    bobDb.collection("withdrawals").doc("wd_low").set({
+      uid: BOB_UID,
+      username: "bobuser",
+      amount: 200,
+      paymentMethod: "JazzCash",
+      accountReference: "03009876543",
+      status: "pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Verified Bob with 4,000 balance CAN submit a withdrawal request of 3,500 PKR
   await assertSucceeds(
     bobDb.collection("withdrawals").doc("wd_1").set({
       uid: BOB_UID,
       username: "bobuser",
-      amount: 200,
+      amount: 3500,
       paymentMethod: "JazzCash",
       accountReference: "03009876543",
       status: "pending",

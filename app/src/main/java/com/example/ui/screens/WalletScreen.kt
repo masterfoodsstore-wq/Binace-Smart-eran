@@ -81,6 +81,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
+import com.example.data.model.AppConstants
 import com.example.data.model.AppSettings
 import com.example.data.model.DepositRequest
 import com.example.data.model.DepositStatusNotification
@@ -90,6 +91,7 @@ import com.example.data.model.TransactionRecord
 import com.example.data.model.UserProfile
 import com.example.data.model.WalletAccount
 import com.example.data.model.WithdrawalRequest
+import com.example.ui.components.AccountVerificationNoticeCard
 import com.example.ui.components.BalanceHeroCard
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.FintechFormatters
@@ -129,14 +131,16 @@ fun WalletScreen(
     }
 
     val effectiveTotalBalance = wallet?.balance ?: profile.combinedBalance
-    val effectiveDepositBalance = wallet?.depositBalance ?: profile.realBalance
-    val effectiveRewardBalance = wallet?.rewardBalance ?: profile.realRewardBalance
+    val effectiveDepositBalance = wallet?.depositBalance ?: profile.effectiveDepositBalance
+    val effectiveRewardBalance = wallet?.rewardBalance ?: profile.effectiveRewardBalance
     val effectiveWalletId = wallet?.walletId?.ifBlank { profile.walletId } ?: profile.walletId
+    val effectiveMinDeposit = maxOf(AppConstants.DEFAULT_MIN_DEPOSIT, settings.minDeposit)
+    val effectiveMinWithdrawal = maxOf(AppConstants.DEFAULT_MIN_WITHDRAWAL, settings.minWithdrawal)
 
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
 
-    var depositAmountText by remember { mutableStateOf("500") }
+    var depositAmountText by remember { mutableStateOf("1000") }
     var isCustomAmount by remember { mutableStateOf(false) }
     var selectedProviderKey by remember { mutableStateOf("easypaisa") }
     var depositReference by remember { mutableStateOf("") }
@@ -272,7 +276,8 @@ fun WalletScreen(
                         totalBalance = effectiveTotalBalance,
                         realBalance = effectiveDepositBalance,
                         rewardBalance = effectiveRewardBalance,
-                        walletId = effectiveWalletId
+                        walletId = effectiveWalletId,
+                        isVerified = profile.isVerified
                     )
                 }
 
@@ -291,7 +296,7 @@ fun WalletScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Text(
-                                        text = "Submit Deposit Request",
+                                        text = "Submit Simulated Demo Deposit",
                                         style = MaterialTheme.typography.titleLarge
                                     )
                                     Surface(
@@ -300,19 +305,25 @@ fun WalletScreen(
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(
-                                            text = "Submit your transaction reference and receipt screenshot. Admin approval verifies your first deposit for the PKR ${settings.referralCommission.toInt()} referral bonus.",
+                                            text = "Submit a simulated demo deposit (min PKR ${effectiveMinDeposit.toInt()}) with your reference and receipt. Admin approval marks your account VERIFIED, unlocks features, and qualifies referrers for PKR ${settings.referralCommission.toInt()} simulated bonus. No real money is required.",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(10.dp)
                                         )
                                     }
 
-                                    Text("Select Deposit Amount (PKR)", style = MaterialTheme.typography.labelLarge)
+                                    Text("Select Simulated Deposit Amount (PKR)", style = MaterialTheme.typography.labelLarge)
+                                    val depositPresets = listOf(
+                                        "1000" to "PKR 1,000",
+                                        "2500" to "PKR 2,500",
+                                        "5000" to "PKR 5,000",
+                                        "10000" to "PKR 10,000"
+                                    )
                                     FlowRow(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        listOf("500" to "PKR 500", "1000" to "PKR 1,000", "2500" to "PKR 2,500", "5000" to "PKR 5,000").forEach { (preset, label) ->
+                                        depositPresets.forEach { (preset, label) ->
                                             FilterChip(
                                                 selected = !isCustomAmount && depositAmountText == preset,
                                                 onClick = {
@@ -326,7 +337,7 @@ fun WalletScreen(
                                             selected = isCustomAmount,
                                             onClick = {
                                                 isCustomAmount = true
-                                                if (depositAmountText in listOf("500", "1000", "2500", "5000")) {
+                                                if (depositAmountText in depositPresets.map { it.first }) {
                                                     depositAmountText = ""
                                                 }
                                             },
@@ -340,10 +351,10 @@ fun WalletScreen(
                                         onValueChange = { raw ->
                                             val clean = raw.filter { ch -> ch.isDigit() || ch == '.' }
                                             depositAmountText = clean
-                                            isCustomAmount = clean !in listOf("500", "1000", "2500", "5000")
+                                            isCustomAmount = clean !in depositPresets.map { it.first }
                                         },
-                                        label = { Text("Deposit Amount (PKR)") },
-                                        placeholder = { Text("Enter amount (min PKR 50)") },
+                                        label = { Text("Simulated Deposit Amount (PKR)") },
+                                        placeholder = { Text("Enter amount (min PKR ${effectiveMinDeposit.toInt()})") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         singleLine = true,
                                         modifier = Modifier
@@ -572,7 +583,7 @@ fun WalletScreen(
                                             .height(50.dp)
                                             .testTag("submit_deposit_button")
                                     ) {
-                                        Text("Submit Deposit Request", fontWeight = FontWeight.Bold)
+                                        Text("Submit Simulated Deposit", fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -651,6 +662,19 @@ fun WalletScreen(
 
                     2 -> {
                         // WITHDRAWAL TAB
+                        if (!profile.isVerified) {
+                            item {
+                                AccountVerificationNoticeCard(
+                                    firstDepositStatus = profile.firstDepositStatus,
+                                    isDarkTheme = isDarkTheme,
+                                    title = "Withdrawals Locked Until Verification",
+                                    message = "Verify your account by submitting a PKR ${effectiveMinDeposit.toInt()} simulated demo deposit in the Deposit tab first.",
+                                    actionLabel = "Go to Simulated Deposit",
+                                    onActionClick = { selectedTab = 1 }
+                                )
+                            }
+                        }
+
                         item {
                             Card(
                                 shape = RoundedCornerShape(20.dp),
@@ -663,11 +687,11 @@ fun WalletScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Text(
-                                        text = "Withdrawal Request",
+                                        text = "Simulated Demo Withdrawal",
                                         style = MaterialTheme.typography.titleLarge
                                     )
                                     Text(
-                                        text = "Available balance: ${FintechFormatters.formatPkr(effectiveTotalBalance)}",
+                                        text = "Minimum simulated withdrawal: PKR ${effectiveMinWithdrawal.toInt()} • Available: ${FintechFormatters.formatPkr(effectiveTotalBalance)}",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.SemiBold
@@ -676,9 +700,11 @@ fun WalletScreen(
                                     OutlinedTextField(
                                         value = withdrawAmountText,
                                         onValueChange = { withdrawAmountText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                                        label = { Text("Withdrawal Amount (PKR)") },
+                                        label = { Text("Simulated Withdrawal Amount (PKR)") },
+                                        placeholder = { Text("Min PKR ${effectiveMinWithdrawal.toInt()}") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         singleLine = true,
+                                        enabled = profile.isVerified,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .testTag("withdraw_amount_input")
@@ -693,6 +719,7 @@ fun WalletScreen(
                                             FilterChip(
                                                 selected = withdrawMethod == method,
                                                 onClick = { withdrawMethod = method },
+                                                enabled = profile.isVerified,
                                                 label = { Text(method) }
                                             )
                                         }
@@ -704,6 +731,7 @@ fun WalletScreen(
                                         label = { Text("Account Reference") },
                                         placeholder = { Text("e.g. 0300-1234567") },
                                         singleLine = true,
+                                        enabled = profile.isVerified,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .testTag("withdraw_account_input")
@@ -716,13 +744,16 @@ fun WalletScreen(
                                             withdrawAmountText = ""
                                             withdrawAccountRef = ""
                                         },
-                                        enabled = !isActionBusy,
+                                        enabled = profile.isVerified && !isActionBusy,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(50.dp)
                                             .testTag("submit_withdrawal_button")
                                     ) {
-                                        Text("Submit Withdrawal Request", fontWeight = FontWeight.Bold)
+                                        Text(
+                                            if (profile.isVerified) "Submit Simulated Withdrawal" else "Verify Account to Withdraw",
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 }
                             }

@@ -25,39 +25,49 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.data.model.ApkDownloadState
 import com.example.data.model.AppUpdateInfo
 import com.example.data.model.DepositRequest
 import com.example.data.model.ReferralRecord
 import com.example.data.model.UserProfile
 import com.example.data.model.WithdrawalRequest
+import com.example.ui.components.AccountVerificationNoticeCard
 import com.example.ui.components.BalanceHeroCard
 import com.example.ui.components.FintechFormatters
 import com.example.ui.components.StatMiniCard
+import com.example.ui.components.VerifiedAccountBadge
 import com.example.ui.theme.AmberPending
 
 @Composable
@@ -65,11 +75,16 @@ fun HomeDashboardScreen(
     profile: UserProfile,
     todayDateKey: String,
     isAdmin: Boolean,
+    isDarkTheme: Boolean = true,
+    showVerifiedBanner: Boolean = false,
+    onDismissVerifiedBanner: () -> Unit = {},
     deposits: List<DepositRequest>,
     withdrawals: List<WithdrawalRequest>,
     referrals: List<ReferralRecord>,
     appUpdateInfo: AppUpdateInfo = AppUpdateInfo(),
+    apkDownloadState: ApkDownloadState = ApkDownloadState.Idle,
     onDownloadApk: (String) -> Unit = {},
+    onOpenDownloads: (String) -> Unit = {},
     onNavigateTasks: () -> Unit,
     onNavigateDeposit: () -> Unit,
     onNavigateWithdraw: () -> Unit,
@@ -106,16 +121,27 @@ fun HomeDashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Welcome back, @${profile.username}",
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Welcome, @${profile.username}",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            VerifiedAccountBadge(isVerified = profile.isVerified, isDarkTheme = isDarkTheme)
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
+                        val verifiedSuffix = if (profile.isVerified && profile.verifiedAt != null) {
+                            " • Verified ${FintechFormatters.formatShortDate(profile.verifiedAt)}"
+                        } else {
+                            ""
+                        }
                         Text(
-                            text = "User ID: ${profile.uid.take(12).uppercase()}",
+                            text = "User ID: ${profile.uid.take(12).uppercase()}$verifiedSuffix",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -123,7 +149,7 @@ fun HomeDashboardScreen(
                     if (isAdmin) {
                         AssistChip(
                             onClick = onOpenAdmin,
-                            label = { Text("Admin Console") },
+                            label = { Text("Admin") },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.AdminPanelSettings,
@@ -133,6 +159,47 @@ fun HomeDashboardScreen(
                             },
                             modifier = Modifier.testTag("home_admin_chip")
                         )
+                    }
+                }
+            }
+
+            if (showVerifiedBanner && profile.isVerified) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("home_verified_notification")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = "Account verified",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Account Verified!",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Daily tasks, referral sharing, and simulated demo withdrawals are now unlocked.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            IconButton(onClick = onDismissVerifiedBanner) {
+                                Icon(Icons.Default.Close, contentDescription = "Dismiss")
+                            }
+                        }
                     }
                 }
             }
@@ -154,12 +221,23 @@ fun HomeDashboardScreen(
                 }
             }
 
+            if (!profile.isVerified) {
+                item {
+                    AccountVerificationNoticeCard(
+                        firstDepositStatus = profile.firstDepositStatus,
+                        isDarkTheme = isDarkTheme,
+                        onActionClick = onNavigateDeposit
+                    )
+                }
+            }
+
             item {
                 BalanceHeroCard(
                     totalBalance = profile.combinedBalance,
-                    realBalance = profile.realBalance,
-                    rewardBalance = profile.realRewardBalance,
-                    walletId = profile.walletId
+                    realBalance = profile.effectiveDepositBalance,
+                    rewardBalance = profile.effectiveRewardBalance,
+                    walletId = profile.walletId,
+                    isVerified = profile.isVerified
                 )
             }
 
@@ -173,51 +251,106 @@ fun HomeDashboardScreen(
                             .fillMaxWidth()
                             .testTag("home_update_banner")
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Row(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.SystemUpdate,
-                                    contentDescription = "New update available",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(28.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SystemUpdate,
+                                        contentDescription = "New update available",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Update Available • v${appUpdateInfo.latestVersionName}",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        val metaLine = listOfNotNull(
+                                            FintechFormatters.formatBytes(appUpdateInfo.apkFileSizeBytes).takeIf { it.isNotBlank() },
+                                            FintechFormatters.formatIsoDate(appUpdateInfo.publishedAt).takeIf { it.isNotBlank() }
+                                        ).joinToString(" • ")
+                                        if (metaLine.isNotBlank()) {
+                                            Text(
+                                                text = metaLine,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        Text(
+                                            text = appUpdateInfo.releaseNotes.ifBlank {
+                                                "New signed APK ready (installed: v${appUpdateInfo.currentVersionName})."
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "Update Available • v${appUpdateInfo.latestVersionName}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = appUpdateInfo.releaseNotes.ifBlank {
-                                            "New signed release APK is ready (current: v${appUpdateInfo.currentVersionName})."
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                when (apkDownloadState) {
+                                    is ApkDownloadState.Completed -> {
+                                        Button(
+                                            onClick = { onOpenDownloads(appUpdateInfo.downloadUrl) },
+                                            modifier = Modifier
+                                                .height(48.dp)
+                                                .testTag("home_install_apk_button")
+                                        ) {
+                                            Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Install")
+                                        }
+                                    }
+                                    is ApkDownloadState.Downloading -> {
+                                        OutlinedButton(
+                                            onClick = { onOpenDownloads(appUpdateInfo.downloadUrl) },
+                                            modifier = Modifier.height(48.dp)
+                                        ) {
+                                            Text("${apkDownloadState.progressPercent}%")
+                                        }
+                                    }
+                                    else -> {
+                                        Button(
+                                            onClick = { onDownloadApk(appUpdateInfo.downloadUrl) },
+                                            modifier = Modifier
+                                                .height(48.dp)
+                                                .testTag("home_download_apk_button")
+                                        ) {
+                                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Download")
+                                        }
+                                    }
                                 }
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Button(
-                                onClick = { onDownloadApk(appUpdateInfo.downloadUrl) },
-                                modifier = Modifier
-                                    .height(48.dp)
-                                    .testTag("home_download_apk_button")
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Download")
+                            if (apkDownloadState is ApkDownloadState.Downloading) {
+                                LinearProgressIndicator(
+                                    progress = { (apkDownloadState.progressPercent / 100f).coerceIn(0f, 1f) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(50))
+                                )
+                            } else if (apkDownloadState is ApkDownloadState.Error) {
+                                Text(
+                                    text = apkDownloadState.message,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
                             }
                         }
                     }
@@ -280,12 +413,12 @@ fun HomeDashboardScreen(
 
             item {
                 val shortcuts = listOf(
-                    ShortcutItem("Daily Tasks", "Earn PKR rewards", Icons.Default.TaskAlt, "shortcut_daily_tasks", onNavigateTasks),
-                    ShortcutItem("Deposit", "Add wallet funds", Icons.Default.ArrowDownward, "shortcut_deposit", onNavigateDeposit),
-                    ShortcutItem("Withdrawal", "Request payout", Icons.Default.ArrowUpward, "shortcut_withdrawal", onNavigateWithdraw),
-                    ShortcutItem("Referral Program", "Earn PKR 100/invite", Icons.Default.CardGiftcard, "shortcut_referrals", onNavigateReferrals),
-                    ShortcutItem("Transaction History", "Full wallet ledger", Icons.Default.History, "shortcut_history", onNavigateHistory),
-                    ShortcutItem("My Profile", "Account & security", Icons.Default.Person, "shortcut_profile", onNavigateProfile),
+                    ShortcutItem("Daily Tasks", "Simulated PKR rewards", Icons.Default.TaskAlt, "shortcut_daily_tasks", onNavigateTasks),
+                    ShortcutItem("Deposit", "Min PKR 1,000 demo", Icons.Default.ArrowDownward, "shortcut_deposit", onNavigateDeposit),
+                    ShortcutItem("Withdrawal", "Min PKR 3,500 demo", Icons.Default.ArrowUpward, "shortcut_withdrawal", onNavigateWithdraw),
+                    ShortcutItem("Referral Program", "PKR 100 demo/invite", Icons.Default.CardGiftcard, "shortcut_referrals", onNavigateReferrals),
+                    ShortcutItem("Transaction History", "Full simulated ledger", Icons.Default.History, "shortcut_history", onNavigateHistory),
+                    ShortcutItem("My Profile", "Account & verification", Icons.Default.Person, "shortcut_profile", onNavigateProfile),
                     ShortcutItem("Customer Support", "WhatsApp Channel", Icons.Default.SupportAgent, "shortcut_support", onOpenSupport)
                 )
 
@@ -326,7 +459,7 @@ fun HomeDashboardScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "All wallet balances, deposits, withdrawals, and PKR 100 referral commissions in Binace Smart Earn are tracked and verified securely.",
+                            text = "All wallet balances, deposits, task rewards, withdrawals, and PKR 100 referral commissions in Binace Smart Earn are simulated demo records with no real-money obligations.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

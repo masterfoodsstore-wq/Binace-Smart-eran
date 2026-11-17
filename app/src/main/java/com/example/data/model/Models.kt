@@ -25,6 +25,14 @@ data class UserProfile(
     val referredBy: String = "",
     val referredByUid: String = "",
     val walletId: String = "",
+    @get:PropertyName("isVerified")
+    @field:PropertyName("isVerified")
+    val isVerified: Boolean = false,
+    val firstDepositStatus: String = "none", // none, pending, approved, rejected
+    val firstDepositAmount: Double = 0.0,
+    val verifiedAt: Timestamp? = null,
+    val demoBalance: Double = 0.0,
+    val demoRewardBalance: Double = 0.0,
     val realBalance: Double = 0.0,
     val realRewardBalance: Double = 0.0,
     val todayTaskEarnings: Double = 0.0,
@@ -40,8 +48,16 @@ data class UserProfile(
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
     @get:Exclude
+    val effectiveDepositBalance: Double
+        get() = maxOf(demoBalance, realBalance)
+
+    @get:Exclude
+    val effectiveRewardBalance: Double
+        get() = maxOf(demoRewardBalance, realRewardBalance)
+
+    @get:Exclude
     val combinedBalance: Double
-        get() = realBalance + realRewardBalance
+        get() = effectiveDepositBalance + effectiveRewardBalance
 }
 
 @IgnoreExtraProperties
@@ -134,6 +150,21 @@ sealed interface ReceiptUploadState {
         val statusNote: String? = null
     ) : ReceiptUploadState
     data class Error(val message: String) : ReceiptUploadState
+}
+
+sealed interface ApkDownloadState {
+    data object Idle : ApkDownloadState
+    data class Downloading(
+        val progressPercent: Int,
+        val downloadedBytes: Long,
+        val totalBytes: Long,
+        val downloadId: Long
+    ) : ApkDownloadState
+    data class Completed(
+        val downloadId: Long,
+        val fileName: String
+    ) : ApkDownloadState
+    data class Error(val message: String) : ApkDownloadState
 }
 
 data class DepositStatusNotification(
@@ -241,13 +272,13 @@ data class TransactionRecord(
 @IgnoreExtraProperties
 data class AppSettings(
     @DocumentId val id: String = "global",
-    val referralCommission: Double = 100.0,
-    val defaultTaskReward: Double = 20.0,
-    val maxDailyReward: Double = 200.0,
-    val currency: String = "PKR",
-    val dailyTaskLimit: Long = 10L,
-    val minWithdrawal: Double = 100.0,
-    val minDeposit: Double = 100.0,
+    val referralCommission: Double = AppConstants.DEFAULT_REFERRAL_COMMISSION,
+    val defaultTaskReward: Double = AppConstants.DEFAULT_TASK_REWARD,
+    val maxDailyReward: Double = AppConstants.DEFAULT_MAX_DAILY_REWARD,
+    val currency: String = AppConstants.DEFAULT_CURRENCY,
+    val dailyTaskLimit: Long = AppConstants.DEFAULT_DAILY_TASK_LIMIT,
+    val minWithdrawal: Double = AppConstants.DEFAULT_MIN_WITHDRAWAL,
+    val minDeposit: Double = AppConstants.DEFAULT_MIN_DEPOSIT,
     val githubRepoSlug: String = "",
     val latestVersionName: String = "",
     val latestVersionCode: Long = 0L,
@@ -263,6 +294,8 @@ data class AppUpdateInfo(
     val latestVersionCode: Int = 1,
     val downloadUrl: String = "",
     val releaseNotes: String = "",
+    val apkFileSizeBytes: Long = 0L,
+    val publishedAt: String = "",
     val githubRepoSlug: String = "",
     val isUpdateAvailable: Boolean = false,
     val isChecking: Boolean = false,
@@ -288,10 +321,13 @@ object AppConstants {
     const val OFFICIAL_WEBSITE_URL = "https://binacesmartearn.online"
     const val REFERRAL_BASE_URL = "https://binacesmartearn.online/signup?ref="
     const val SUPPORT_WHATSAPP_CHANNEL_URL = "https://whatsapp.com/channel/0029Vb9SL1bEFeXlCASyF41z"
+    const val APK_ASSET_NAME = "BINACE-SMART-EARN.apk"
     const val DEFAULT_CURRENCY = "PKR"
     const val DEFAULT_REFERRAL_COMMISSION = 100.0
     const val DEFAULT_TASK_REWARD = 20.0
     const val DEFAULT_DAILY_TASK_LIMIT = 10L
     const val DEFAULT_MAX_DAILY_REWARD = 200.0
+    const val DEFAULT_MIN_DEPOSIT = 1000.0
+    const val DEFAULT_MIN_WITHDRAWAL = 3500.0
     const val PKT_TIMEZONE_ID = "Asia/Karachi"
 }

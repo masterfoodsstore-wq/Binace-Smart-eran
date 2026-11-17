@@ -89,23 +89,39 @@ class BinaceSmartEarnRepositoryRuleTest : FirestoreEmulatorTestBase() {
         }
         assertTrue("Self-referral must fail", selfRefFail.isFailure)
 
-        // Step 3-4: Load all 10 active daily tasks and complete the 1st task (20 PKR)
+        // Step 3: Unverified Alice is gated from starting or claiming daily tasks
         val taskRepo = TaskRepository(firestore, auth)
         val tasks = withTimeout(FLOW_TIMEOUT_MS) { taskRepo.observeActiveTasks().first { it.size == 10 } }
         assertEquals(10, tasks.size)
 
         val firstTask = tasks.first()
         assertEquals(20.0, firstTask.rewardPoints, 0.01)
-        val startRes = withTimeout(OP_TIMEOUT_MS) { taskRepo.startTask(firstTask) }
+        val unverifiedStart = withTimeout(OP_TIMEOUT_MS) { taskRepo.startTask(firstTask, aliceProfile) }
+        assertTrue("Unverified user must be blocked from starting daily tasks", unverifiedStart.isFailure)
+
+        // Admin manually verifies Alice -> verifiedAt is populated and tasks unlock
+        signInTestUser(AppConstants.BOOTSTRAP_ADMIN_EMAIL, verifyEmail = true)
+        val verifyAliceRes = withTimeout(OP_TIMEOUT_MS) { adminRepo.verifyUserAccount(aliceProfile, verified = true) }
+        assertTrue("Admin verifyUserAccount failed: ${verifyAliceRes.exceptionOrNull()}", verifyAliceRes.isSuccess)
+
+        signInTestUser("alice_e2e_$suffix@test.com")
+        val verifiedAlice = withTimeout(FLOW_TIMEOUT_MS) {
+            aliceUserRepo.observeUserProfile(aliceUid).first { it != null && it.isVerified }
+        }!!
+        assertNotNull(verifiedAlice.verifiedAt)
+
+        // Step 4: Load all 10 active daily tasks and complete the 1st task (20 PKR)
+        val startRes = withTimeout(OP_TIMEOUT_MS) { taskRepo.startTask(firstTask, verifiedAlice) }
         assertTrue("Start task failed: ${startRes.exceptionOrNull()}", startRes.isSuccess)
 
-        val claimFirstRes = withTimeout(OP_TIMEOUT_MS) { taskRepo.claimTaskReward(firstTask, aliceProfile) }
+        val claimFirstRes = withTimeout(OP_TIMEOUT_MS) { taskRepo.claimTaskReward(firstTask, verifiedAlice) }
         assertTrue("Claim 1st task reward failed: ${claimFirstRes.exceptionOrNull()}", claimFirstRes.isSuccess)
 
         var currentAlice = withTimeout(FLOW_TIMEOUT_MS) {
             aliceUserRepo.observeUserProfile(aliceUid).first { it != null && it.completedTasksCount == 1L }
         }!!
         assertEquals(20.0, currentAlice.realRewardBalance, 0.01)
+        assertEquals(20.0, currentAlice.demoRewardBalance, 0.01)
         assertEquals(20.0, currentAlice.todayTaskEarnings, 0.01)
 
         // Step 6: Verify duplicate completion of 1st task is blocked
@@ -124,6 +140,7 @@ class BinaceSmartEarnRepositoryRuleTest : FirestoreEmulatorTestBase() {
         assertEquals(10L, currentAlice.completedTasksCount)
         assertEquals(200.0, currentAlice.todayTaskEarnings, 0.01)
         assertEquals(200.0, currentAlice.realRewardBalance, 0.01)
+        assertEquals(200.0, currentAlice.demoRewardBalance, 0.01)
 
         val aliceWalletAfter10 = withTimeout(FLOW_TIMEOUT_MS) {
             aliceUserRepo.observeWallet(aliceUid).first { it != null && it.balance >= 200.0 }
@@ -139,18 +156,28 @@ class BinaceSmartEarnRepositoryRuleTest : FirestoreEmulatorTestBase() {
         }
         assertEquals(aliceProfile.referralCode, bobProfile.referredBy)
 
-        // Step 8: Bob submits a deposit request with paymentMethod = "Easypaisa" (PKR 500)
+        // Step 8: Bob cannot withdraw before verification or deposit below PKR 1,000 minimum
         val bobWalletRepo = WalletRepository(firestore, auth)
         val overWithdraw = withTimeout(OP_TIMEOUT_MS) {
-            bobWalletRepo.submitWithdrawalRequest(bobProfile, 100.0, "Easypaisa", "03001234567", emptyList())
+            bobWalletRepo.submitWithdrawalRequest(bobProfile, 3500.0, "Easypaisa", "03001234567", emptyList())
         }
-        assertTrue("Withdrawal exceeding 0 balance must fail", overWithdraw.isFailure)
+        assertTrue("Unverified withdrawal must fail", overWithdraw.isFailure)
+
+        val lowDeposit = withTimeout(OP_TIMEOUT_MS) {
+            bobWalletRepo.submitDepositRequest(
+                userProfile = bobProfile,
+                amount = 500.0,
+                paymentMethod = "EasyPaisa",
+                reference = "TX-LOW-$suffix"
+            )
+        }
+        assertTrue("Deposit below PKR 1,000 minimum must fail", lowDeposit.isFailure)
 
         val preDepositId = bobWalletRepo.newDepositId()
         val depId = withTimeout(OP_TIMEOUT_MS) {
             bobWalletRepo.submitDepositRequest(
                 userProfile = bobProfile,
-                amount = 500.0,
+                amount = 4000.0,
                 paymentMethod = "EasyPaisa",
                 reference = "TX-REF-$suffix",
                 receiptBase64 = null,
@@ -163,7 +190,7 @@ class BinaceSmartEarnRepositoryRuleTest : FirestoreEmulatorTestBase() {
         }
         assertEquals(preDepositId, depId)
 
-        // Step 9: Admin approves Bob's deposit -> credits Bob PKR 500 (users + wallets) AND triggers PKR 100 commission for Alice
+        // Step 9: Admin approves Bob's first deposit -> auto-verifies Bob, credits PKR 4,000, AND triggers PKR 100 commission for Alice
         signInTestUser(AppConstants.BOOTSTRAP_ADMIN_EMAIL, verifyEmail = true)
         val deposits = withTimeout(FLOW_TIMEOUT_MS) {
             adminRepo.observeAllDeposits().first { list -> list.any { it.id == depId } }
@@ -195,18 +222,27 @@ class BinaceSmartEarnRepositoryRuleTest : FirestoreEmulatorTestBase() {
         assertEquals(100.0, aliceAfterComm.totalReferralCommission, 0.01)
         assertEquals(1L, aliceAfterComm.totalReferrals)
         assertEquals(300.0, aliceAfterComm.realRewardBalance, 0.01)
+        assertEquals(300.0, aliceAfterComm.demoRewardBalance, 0.01)
         val aliceWalletFinal = withTimeout(FLOW_TIMEOUT_MS) {
             aliceUserRepo.observeWallet(aliceUid).first { it != null && it.balance >= 300.0 }
         }!!
         assertEquals(300.0, aliceWalletFinal.balance, 0.01)
 
-        // Step 10: Bob now has PKR 500 balance and submits a withdrawal request of PKR 200
+        // Step 10: Bob is now verified with PKR 4,000 balance; withdrawal < 3,500 fails while 3,500 succeeds
         signInTestUser("bob_e2e_$suffix@test.com")
         val bobAfterDep = withTimeout(FLOW_TIMEOUT_MS) {
-            bobUserRepo.observeUserProfile(bobUid).first { it != null && it.realBalance >= 500.0 }
+            bobUserRepo.observeUserProfile(bobUid).first { it != null && it.isVerified && it.realBalance >= 4000.0 }
         }!!
+        assertTrue(bobAfterDep.isVerified)
+        assertNotNull(bobAfterDep.verifiedAt)
+
+        val lowWd = withTimeout(OP_TIMEOUT_MS) {
+            bobWalletRepo.submitWithdrawalRequest(bobAfterDep, 200.0, "JazzCash", "03009998877", emptyList())
+        }
+        assertTrue("Withdrawal below PKR 3,500 minimum must fail", lowWd.isFailure)
+
         val wdId = withTimeout(OP_TIMEOUT_MS) {
-            bobWalletRepo.submitWithdrawalRequest(bobAfterDep, 200.0, "JazzCash", "03009998877", emptyList()).getOrThrow()
+            bobWalletRepo.submitWithdrawalRequest(bobAfterDep, 3500.0, "JazzCash", "03009998877", emptyList()).getOrThrow()
         }
 
         // Duplicate pending withdrawal blocked
@@ -214,11 +250,11 @@ class BinaceSmartEarnRepositoryRuleTest : FirestoreEmulatorTestBase() {
             bobWalletRepo.observeUserWithdrawals(bobUid).first { it.any { w -> w.id == wdId } }
         }
         val dupWd = withTimeout(OP_TIMEOUT_MS) {
-            bobWalletRepo.submitWithdrawalRequest(bobAfterDep, 100.0, "JazzCash", "03009998877", pendingWds)
+            bobWalletRepo.submitWithdrawalRequest(bobAfterDep, 3500.0, "JazzCash", "03009998877", pendingWds)
         }
         assertTrue("Duplicate pending withdrawal must be blocked", dupWd.isFailure)
 
-        // Step 11-12: Admin approves Bob's withdrawal -> Bob balance becomes PKR 300 in both users & wallets, plus real-time transactions
+        // Step 11-12: Admin approves Bob's withdrawal -> Bob balance becomes PKR 500 in both users & wallets, plus real-time transactions
         signInTestUser(AppConstants.BOOTSTRAP_ADMIN_EMAIL, verifyEmail = true)
         val approveWdRes = withTimeout(OP_TIMEOUT_MS) { adminRepo.approveWithdrawal(pendingWds.first { it.id == wdId }) }
         assertTrue("Admin withdrawal approval failed: ${approveWdRes.exceptionOrNull()}", approveWdRes.isSuccess)
@@ -227,13 +263,14 @@ class BinaceSmartEarnRepositoryRuleTest : FirestoreEmulatorTestBase() {
 
         signInTestUser("bob_e2e_$suffix@test.com")
         val bobFinal = withTimeout(FLOW_TIMEOUT_MS) {
-            bobUserRepo.observeUserProfile(bobUid).first { it != null && it.realBalance == 300.0 }
+            bobUserRepo.observeUserProfile(bobUid).first { it != null && it.realBalance == 500.0 }
         }!!
-        assertEquals(300.0, bobFinal.realBalance, 0.01)
+        assertEquals(500.0, bobFinal.realBalance, 0.01)
+        assertEquals(500.0, bobFinal.demoBalance, 0.01)
         val bobWalletFinal = withTimeout(FLOW_TIMEOUT_MS) {
-            bobUserRepo.observeWallet(bobUid).first { it != null && it.balance == 300.0 }
+            bobUserRepo.observeWallet(bobUid).first { it != null && it.balance == 500.0 }
         }!!
-        assertEquals(300.0, bobWalletFinal.balance, 0.01)
+        assertEquals(500.0, bobWalletFinal.balance, 0.01)
     }
 
     @Test

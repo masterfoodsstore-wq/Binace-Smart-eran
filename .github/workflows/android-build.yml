@@ -91,18 +91,20 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           KEYSTORE_FILE="$RUNNER_TEMP/my-upload-key.jks"
-          if [[ -n "$ANDROID_KEYSTORE_BASE64" && -n "$SECRET_STORE_PASSWORD" && -n "$SECRET_KEY_PASSWORD" ]]; then
+          RESOLVED_STORE_PASS="${SECRET_STORE_PASSWORD:-$SECRET_KEYSTORE_PASSWORD}"
+          if [[ -n "$ANDROID_KEYSTORE_BASE64" && -n "$RESOLVED_STORE_PASS" && -n "$SECRET_KEY_PASSWORD" ]]; then
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_FILE"
             echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
-            echo "STORE_PASSWORD=$SECRET_STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=$RESOLVED_STORE_PASS" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$SECRET_KEY_PASSWORD" >> "$GITHUB_ENV"
             echo "signing_mode=secret" >> "$GITHUB_OUTPUT"
             echo "Using release signing keystore from GitHub Secrets."
           else
-            echo "::warning::ANDROID_KEYSTORE_BASE64, STORE_PASSWORD, or KEY_PASSWORD secret not set. Generating an ephemeral CI keystore for this workflow run. Add those 3 repository secrets to publish Play-consistent signed APKs."
+            echo "::warning::ANDROID_KEYSTORE_BASE64, STORE_PASSWORD/KEYSTORE_PASSWORD, or KEY_PASSWORD secret not set. Generating an ephemeral CI keystore for this workflow run. Add those repository secrets to publish Play-consistent signed APKs."
             EPHEMERAL_PASS="$(openssl rand -hex 16)"
             keytool -genkeypair \
               -v \
@@ -128,6 +130,7 @@ jobs:
           gradle :app:assembleRelease \
             -PVERSION_CODE="${{ steps.meta.outputs.version_code }}" \
             -PVERSION_NAME="${{ steps.meta.outputs.version_name }}" \
+            -PGITHUB_REPOSITORY="${{ github.repository }}" \
             --no-daemon
 
       - name: Stage Versioned & Latest Release APKs
@@ -139,8 +142,8 @@ jobs:
             exit 1
           fi
           mkdir -p release-assets
+          cp "$SOURCE_APK" "release-assets/BINACE-SMART-EARN.apk"
           cp "$SOURCE_APK" "release-assets/binace-smart-earn-v${{ steps.meta.outputs.version_name }}.apk"
-          cp "$SOURCE_APK" "release-assets/binace-smart-earn-latest.apk"
           ls -lh release-assets/
 
       - name: Upload APK Workflow Artifact
@@ -159,15 +162,15 @@ jobs:
           make_latest: true
           generate_release_notes: true
           files: |
+            release-assets/BINACE-SMART-EARN.apk
             release-assets/binace-smart-earn-v${{ steps.meta.outputs.version_name }}.apk
-            release-assets/binace-smart-earn-latest.apk
           body: |
             ## BINACE SMART EARN v${{ steps.meta.outputs.version_name }} (Build ${{ steps.meta.outputs.version_code }})
 
             ${{ inputs.release_notes != '' && inputs.release_notes || 'Automated Android release build verified with unit tests and signed APK packaging.' }}
 
             ### Direct Public APK Download URLs
-            - **Latest Always:** https://github.com/${{ github.repository }}/releases/latest/download/binace-smart-earn-latest.apk
+            - **Latest Always (`BINACE-SMART-EARN.apk`):** https://github.com/${{ github.repository }}/releases/latest/download/BINACE-SMART-EARN.apk
             - **Versioned APK:** https://github.com/${{ github.repository }}/releases/download/${{ steps.meta.outputs.tag_name }}/binace-smart-earn-v${{ steps.meta.outputs.version_name }}.apk
 
             - Signing mode: `${{ steps.signing.outputs.signing_mode }}`
@@ -181,6 +184,6 @@ jobs:
             echo "### BINACE SMART EARN Release Summary"
             echo "- **Version:** \`v${{ steps.meta.outputs.version_name }}\` (Build \`${{ steps.meta.outputs.version_code }}\`)"
             echo "- **Tag:** \`${{ steps.meta.outputs.tag_name }}\`"
-            echo "- **Public Latest APK URL:** https://github.com/${{ github.repository }}/releases/latest/download/binace-smart-earn-latest.apk"
+            echo "- **Public Latest APK URL:** https://github.com/${{ github.repository }}/releases/latest/download/BINACE-SMART-EARN.apk"
             echo "- **Signing Mode:** \`${{ steps.signing.outputs.signing_mode }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

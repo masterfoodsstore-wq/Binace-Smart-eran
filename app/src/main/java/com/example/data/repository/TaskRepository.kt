@@ -124,11 +124,18 @@ class TaskRepository(
         }
     }
 
-    suspend fun startTask(task: TaskItem): Result<UserTaskRecord> {
+    suspend fun startTask(task: TaskItem, userProfile: UserProfile): Result<UserTaskRecord> {
         val uid = try {
             requireUserId()
         } catch (e: Exception) {
             return Result.failure(e)
+        }
+        if (!userProfile.isVerified) {
+            return Result.failure(
+                IllegalStateException(
+                    "Account verification required. Submit and get a simulated PKR ${AppConstants.DEFAULT_MIN_DEPOSIT.toInt()} demo deposit approved to unlock daily tasks."
+                )
+            )
         }
         val dateKey = todayDateKey()
         val utId = "${uid}_${task.id}_${dateKey}"
@@ -185,12 +192,19 @@ class TaskRepository(
         } catch (e: Exception) {
             return Result.failure(e)
         }
+        if (!userProfile.isVerified) {
+            return Result.failure(
+                IllegalStateException(
+                    "Account verification required. Submit and get a simulated PKR ${AppConstants.DEFAULT_MIN_DEPOSIT.toInt()} demo deposit approved to unlock daily task rewards."
+                )
+            )
+        }
         val dateKey = todayDateKey()
         val currentTodayEarnings = if (userProfile.todayTaskDate == dateKey) userProfile.todayTaskEarnings else 0.0
         if (currentTodayEarnings + task.rewardPoints > maxDailyReward + 0.001) {
             return Result.failure(
                 IllegalStateException(
-                    "Daily reward limit of PKR ${maxDailyReward.toInt()} reached. Tasks reset at 12:00 AM PKT."
+                    "Daily simulated reward limit of PKR ${maxDailyReward.toInt()} reached. Tasks reset at 12:00 AM PKT."
                 )
             )
         }
@@ -258,10 +272,12 @@ class TaskRepository(
             )
 
             val newTodayEarnings = currentTodayEarnings + task.rewardPoints
+            val updatedRewardBal = userProfile.effectiveRewardBalance + task.rewardPoints
             batch.update(
                 userRef,
                 mapOf(
-                    "realRewardBalance" to (userProfile.realRewardBalance + task.rewardPoints),
+                    "realRewardBalance" to updatedRewardBal,
+                    "demoRewardBalance" to updatedRewardBal,
                     "todayTaskEarnings" to newTodayEarnings,
                     "todayTaskDate" to dateKey,
                     "totalEarnedTasks" to (userProfile.totalEarnedTasks + task.rewardPoints),
@@ -306,7 +322,7 @@ class TaskRepository(
             DefaultTaskSeed(
                 id = "task_01_daily_login",
                 title = "Daily login check-in",
-                description = "Check in once every 24 hours to claim your daily loyalty reward.",
+                description = "Check in once every 24 hours to claim your daily simulated loyalty reward.",
                 category = "daily_login",
                 rewardPoints = AppConstants.DEFAULT_TASK_REWARD,
                 dailyLimit = 1L,
@@ -387,7 +403,7 @@ class TaskRepository(
             DefaultTaskSeed(
                 id = "task_10_knowledge_challenge",
                 title = "Daily knowledge challenge",
-                description = "Complete the final daily knowledge milestone to reach your PKR 200 daily target.",
+                description = "Complete the final daily knowledge milestone to reach your PKR 200 simulated daily reward target.",
                 category = "daily_activity",
                 rewardPoints = AppConstants.DEFAULT_TASK_REWARD,
                 dailyLimit = 1L,

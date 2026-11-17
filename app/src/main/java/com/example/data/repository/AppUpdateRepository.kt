@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.BuildConfig
+import com.example.data.model.AppConstants
 import com.example.data.model.AppSettings
 import com.example.data.model.AppUpdateInfo
 import com.squareup.moshi.Json
@@ -26,6 +27,7 @@ data class GitHubReleaseDto(
     @Json(name = "name") val name: String = "",
     @Json(name = "body") val body: String = "",
     @Json(name = "html_url") val htmlUrl: String = "",
+    @Json(name = "published_at") val publishedAt: String = "",
     @Json(name = "assets") val assets: List<GitHubAssetDto> = emptyList()
 )
 
@@ -65,6 +67,8 @@ class AppUpdateRepository(
         var bestCode = currentVersionCode
         var bestUrl = firestoreUrl
         var bestNotes = settings.releaseNotes.trim()
+        var bestSizeBytes = 0L
+        var bestPublishedAt = ""
         var sourceLabel = if (effectiveSlug.isNotBlank()) "GitHub Releases ($effectiveSlug)" else "Installed Build"
         var errorMessage: String? = null
 
@@ -84,7 +88,7 @@ class AppUpdateRepository(
                 val (owner, repo) = ownerRepo
                 val release = api.getLatestRelease(owner, repo)
                 val remoteVersion = normalizeVersion(release.tagName.ifBlank { release.name })
-                val remoteApkUrl = extractApkDownloadUrl(
+                val (remoteApkUrl, remoteSizeBytes) = extractApkAsset(
                     assets = release.assets,
                     repoSlug = "$owner/$repo",
                     fallbackHtmlUrl = release.htmlUrl
@@ -96,12 +100,26 @@ class AppUpdateRepository(
                     if (remoteApkUrl.isNotBlank()) {
                         bestUrl = remoteApkUrl
                     }
+                    if (remoteSizeBytes > 0L) {
+                        bestSizeBytes = remoteSizeBytes
+                    }
+                    if (release.publishedAt.isNotBlank()) {
+                        bestPublishedAt = release.publishedAt
+                    }
                     if (remoteNotes.isNotBlank()) {
                         bestNotes = remoteNotes
                     }
                     sourceLabel = "GitHub Release v$remoteVersion"
-                } else if (bestUrl.isBlank() && remoteApkUrl.isNotBlank()) {
-                    bestUrl = remoteApkUrl
+                } else {
+                    if (bestUrl.isBlank() && remoteApkUrl.isNotBlank()) {
+                        bestUrl = remoteApkUrl
+                    }
+                    if (bestSizeBytes == 0L && remoteSizeBytes > 0L) {
+                        bestSizeBytes = remoteSizeBytes
+                    }
+                    if (bestPublishedAt.isBlank() && release.publishedAt.isNotBlank()) {
+                        bestPublishedAt = release.publishedAt
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -120,6 +138,8 @@ class AppUpdateRepository(
             latestVersionCode = bestCode.coerceAtLeast(currentVersionCode),
             downloadUrl = bestUrl,
             releaseNotes = bestNotes,
+            apkFileSizeBytes = bestSizeBytes,
+            publishedAt = bestPublishedAt,
             githubRepoSlug = effectiveSlug,
             isUpdateAvailable = isUpdateAvailable,
             isChecking = false,
@@ -129,7 +149,8 @@ class AppUpdateRepository(
     }
 
     companion object {
-        const val LATEST_APK_ASSET_NAME = "binace-smart-earn-latest.apk"
+        const val LATEST_APK_ASSET_NAME = AppConstants.APK_ASSET_NAME
+        private const val LEGACY_APK_ASSET_NAME = "binace-smart-earn-latest.apk"
 
         private fun createDefaultApi(): GitHubReleaseApi {
             val moshi = Moshi.Builder()
@@ -167,28 +188,35 @@ class AppUpdateRepository(
             return "https://github.com/${pair.first}/${pair.second}/releases/latest/download/$LATEST_APK_ASSET_NAME"
         }
 
-        fun extractApkDownloadUrl(
+        fun extractApkAsset(
             assets: List<GitHubAssetDto>,
             repoSlug: String,
             fallbackHtmlUrl: String = ""
-        ): String {
+        ): Pair<String, Long> {
             val exactLatest = assets.firstOrNull {
-                it.name.equals(LATEST_APK_ASSET_NAME, ignoreCase = true) &&
+                (it.name.equals(LATEST_APK_ASSET_NAME, ignoreCase = true) ||
+                    it.name.equals(LEGACY_APK_ASSET_NAME, ignoreCase = true)) &&
                     it.browserDownloadUrl.startsWith("https://")
             }
-            if (exactLatest != null) return exactLatest.browserDownloadUrl
+            if (exactLatest != null) return exactLatest.browserDownloadUrl to exactLatest.size
 
             val anyApk = assets.firstOrNull {
                 it.name.endsWith(".apk", ignoreCase = true) &&
                     it.browserDownloadUrl.startsWith("https://")
             }
-            if (anyApk != null) return anyApk.browserDownloadUrl
+            if (anyApk != null) return anyApk.browserDownloadUrl to anyApk.size
 
             val publicLatest = buildPublicLatestApkUrl(repoSlug)
-            if (publicLatest.isNotBlank()) return publicLatest
+            if (publicLatest.isNotBlank()) return publicLatest to 0L
 
-            return fallbackHtmlUrl.takeIf { it.startsWith("https://") }.orEmpty()
+            return (fallbackHtmlUrl.takeIf { it.startsWith("https://") }.orEmpty()) to 0L
         }
+
+        fun extractApkDownloadUrl(
+            assets: List<GitHubAssetDto>,
+            repoSlug: String,
+            fallbackHtmlUrl: String = ""
+        ): String = extractApkAsset(assets, repoSlug, fallbackHtmlUrl).first
 
         fun normalizeVersion(raw: String): String {
             val trimmed = raw.trim().removePrefix("v").removePrefix("V")

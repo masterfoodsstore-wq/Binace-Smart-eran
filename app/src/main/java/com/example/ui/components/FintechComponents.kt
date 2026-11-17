@@ -74,6 +74,26 @@ object FintechFormatters {
         return SimpleDateFormat("dd MMM", Locale.US).format(ts.toDate())
     }
 
+    fun formatBytes(bytes: Long): String {
+        if (bytes <= 0L) return ""
+        val mb = bytes / (1024.0 * 1024.0)
+        return if (mb >= 1.0) String.format(Locale.US, "%.2f MB", mb)
+        else String.format(Locale.US, "%.0f KB", (bytes / 1024.0).coerceAtLeast(1.0))
+    }
+
+    fun formatIsoDate(iso: String): String {
+        if (iso.isBlank()) return ""
+        return try {
+            val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            val parsed = parser.parse(iso) ?: return iso.take(10)
+            SimpleDateFormat("dd MMM yyyy", Locale.US).format(parsed)
+        } catch (_: Exception) {
+            iso.take(10)
+        }
+    }
+
     fun encodeReceiptThumbnail(context: Context, uri: Uri): String? {
         return try {
             val input = context.contentResolver.openInputStream(uri) ?: return null
@@ -113,7 +133,7 @@ object FintechFormatters {
 
 @Composable
 fun SimulatedBadge(
-    label: String = "PKR WALLET",
+    label: String = "SIMULATED DEMO",
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -132,6 +152,108 @@ fun SimulatedBadge(
 }
 
 @Composable
+fun VerifiedAccountBadge(
+    isVerified: Boolean,
+    isDarkTheme: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val bg = when {
+        isVerified && isDarkTheme -> EmeraldContainerDark
+        isVerified -> SoftMintSurface
+        isDarkTheme -> AmberContainerDark
+        else -> AmberContainerLight
+    }
+    val fg = when {
+        isVerified && isDarkTheme -> EmeraldPrimary
+        isVerified -> Color(0xFF007A4D)
+        isDarkTheme -> AmberPending
+        else -> Color(0xFFB45309)
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = bg,
+        border = BorderStroke(1.dp, fg.copy(alpha = 0.45f))
+    ) {
+        Text(
+            text = if (isVerified) "VERIFIED ✓" else "UNVERIFIED",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = fg,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
+}
+
+@Composable
+fun AccountVerificationNoticeCard(
+    firstDepositStatus: String,
+    isDarkTheme: Boolean,
+    title: String = "Account Verification Required",
+    message: String = "Submit a simulated PKR 1,000 demo deposit and wait for admin approval to unlock Daily Tasks, Referral Sharing, and Simulated Demo Withdrawals. No real money is required.",
+    actionLabel: String? = "Go to Simulated Deposit",
+    onActionClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val accent = if (firstDepositStatus.equals("pending", ignoreCase = true)) AmberPending else EmeraldPrimary
+    val container = if (isDarkTheme) {
+        if (firstDepositStatus.equals("pending", ignoreCase = true)) AmberContainerDark else Color(0xFF0E1D16)
+    } else {
+        if (firstDepositStatus.equals("pending", ignoreCase = true)) AmberContainerLight else SoftMintSurface
+    }
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = container),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.65f))
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (firstDepositStatus.equals("pending", ignoreCase = true)) {
+                        "Verification Deposit Pending Review"
+                    } else {
+                        title
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                VerifiedAccountBadge(isVerified = false, isDarkTheme = isDarkTheme)
+            }
+            Text(
+                text = if (firstDepositStatus.equals("pending", ignoreCase = true)) {
+                    "Your simulated demo deposit is PENDING admin review. Once approved, your account is automatically marked VERIFIED and all simulated features unlock."
+                } else if (firstDepositStatus.equals("rejected", ignoreCase = true)) {
+                    "Your previous verification deposit was rejected. Please submit a new PKR 1,000 simulated demo deposit request in Wallet > Deposit."
+                } else {
+                    message
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (actionLabel != null && onActionClick != null) {
+                androidx.compose.material3.Button(
+                    onClick = onActionClick,
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text(actionLabel, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun StatusPill(
     status: String,
     isDarkTheme: Boolean,
@@ -139,7 +261,7 @@ fun StatusPill(
 ) {
     val normalized = status.lowercase()
     val (bg, fg) = when (normalized) {
-        "approved", "completed", "active", "claimed", "rewarded", "qualified" -> {
+        "approved", "completed", "active", "claimed", "rewarded", "qualified", "verified" -> {
             if (isDarkTheme) EmeraldContainerDark to EmeraldPrimary
             else SoftMintSurface to Color(0xFF007A4D)
         }
@@ -173,6 +295,7 @@ fun BalanceHeroCard(
     realBalance: Double,
     rewardBalance: Double,
     walletId: String,
+    isVerified: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -215,7 +338,7 @@ fun BalanceHeroCard(
                 ) {
                     Column {
                         Text(
-                            text = "TOTAL WALLET BALANCE",
+                            text = "SIMULATED DEMO WALLET",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color(0xFF9DECC9)
                         )
@@ -226,7 +349,7 @@ fun BalanceHeroCard(
                             color = Color(0xFFB7C7BF)
                         )
                     }
-                    SimulatedBadge(label = "VERIFIED PKR")
+                    SimulatedBadge(label = if (isVerified) "VERIFIED DEMO" else "DEMO WALLET")
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -250,7 +373,7 @@ fun BalanceHeroCard(
                     ) {
                         Column {
                             Text(
-                                text = "Deposit Balance",
+                                text = "Simulated Deposit",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = Color(0xFFB5C9BF)
                             )
@@ -273,7 +396,7 @@ fun BalanceHeroCard(
                     ) {
                         Column {
                             Text(
-                                text = "Task & Ref Rewards",
+                                text = "Simulated Rewards",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = Color(0xFFB5C9BF)
                             )

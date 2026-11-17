@@ -65,7 +65,7 @@ object ReferralLinkHelper {
 
     fun buildShareMessage(referralCode: String): String {
         val link = buildReferralLink(referralCode)
-        return "Join Binace Smart Earn with my referral code $referralCode and earn PKR 100 bonus after first verified deposit! Sign up here: $link"
+        return "Join Binace Smart Earn with my referral code $referralCode for a simulated Rs. 100 demo commission after your first verified simulated deposit! Sign up here: $link"
     }
 
     fun whatsAppShareUrl(message: String): String =

@@ -52,6 +52,7 @@ import com.example.data.model.TaskItem
 import com.example.data.model.UiState
 import com.example.data.model.UserProfile
 import com.example.data.model.UserTaskRecord
+import com.example.ui.components.AccountVerificationNoticeCard
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.FintechFormatters
 import com.example.ui.components.SimulatedBadge
@@ -68,7 +69,8 @@ fun TasksScreen(
     isActionBusy: Boolean,
     isDarkTheme: Boolean,
     onStartTask: (TaskItem) -> Unit,
-    onClaimReward: (TaskItem) -> Unit
+    onClaimReward: (TaskItem) -> Unit,
+    onNavigateDeposit: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Daily Tasks, 1 = Completion History
     val timers = remember { mutableStateMapOf<String, Int>() }
@@ -125,7 +127,20 @@ fun TasksScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    SimulatedBadge(label = "DAILY TASKS")
+                    SimulatedBadge(label = "SIMULATED TASKS")
+                }
+            }
+
+            if (!profile.isVerified) {
+                item {
+                    AccountVerificationNoticeCard(
+                        firstDepositStatus = profile.firstDepositStatus,
+                        isDarkTheme = isDarkTheme,
+                        title = "Daily Tasks Locked Until Verification",
+                        message = "Submit a simulated PKR 1,000 demo deposit in Wallet > Deposit. Once approved by an admin, all 10 daily tasks (PKR 20 simulated reward each) unlock automatically.",
+                        actionLabel = "Go to Simulated Deposit",
+                        onActionClick = onNavigateDeposit
+                    )
                 }
             }
 
@@ -215,6 +230,7 @@ fun TasksScreen(
                                     task = task,
                                     record = record,
                                     remainingSeconds = remainingSeconds,
+                                    isVerified = profile.isVerified,
                                     isActionBusy = isActionBusy,
                                     isDarkTheme = isDarkTheme,
                                     onStart = {
@@ -290,6 +306,7 @@ private fun DailyTaskCard(
     task: TaskItem,
     record: UserTaskRecord?,
     remainingSeconds: Int,
+    isVerified: Boolean,
     isActionBusy: Boolean,
     isDarkTheme: Boolean,
     onStart: () -> Unit,
@@ -393,7 +410,7 @@ private fun DailyTaskCard(
             ) {
                 Column {
                     Text(
-                        text = "Task Reward",
+                        text = "Simulated Reward",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -428,29 +445,29 @@ private fun DailyTaskCard(
                     "in_progress" -> {
                         Button(
                             onClick = onClaim,
-                            enabled = !isActionBusy && remainingSeconds == 0,
+                            enabled = isVerified && !isActionBusy && remainingSeconds == 0,
                             modifier = Modifier
                                 .height(48.dp)
                                 .testTag("claim_task_${task.id}")
                         ) {
-                            Text(if (remainingSeconds > 0) "Wait ${remainingSeconds}s" else "Claim Reward")
+                            Text(if (!isVerified) "Verify First" else if (remainingSeconds > 0) "Wait ${remainingSeconds}s" else "Claim Reward")
                         }
                     }
                     else -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(
                                 onClick = onStart,
-                                enabled = !isActionBusy,
+                                enabled = isVerified && !isActionBusy,
                                 modifier = Modifier
                                     .height(48.dp)
                                     .testTag("start_task_${task.id}")
                             ) {
-                                Text("Start Task")
+                                Text(if (isVerified) "Start Task" else "Locked")
                             }
                             if (task.durationSeconds == 0L) {
                                 Button(
                                     onClick = onClaim,
-                                    enabled = !isActionBusy,
+                                    enabled = isVerified && !isActionBusy,
                                     modifier = Modifier
                                         .height(48.dp)
                                         .testTag("claim_direct_${task.id}")

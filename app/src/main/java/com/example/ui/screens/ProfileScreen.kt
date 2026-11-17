@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -36,6 +37,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -50,16 +52,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.data.model.ApkDownloadState
 import com.example.data.model.AppConstants
 import com.example.data.model.AppUpdateInfo
 import com.example.data.model.UserProfile
 import com.example.data.model.WalletAccount
 import com.example.ui.components.FintechFormatters
 import com.example.ui.components.StatusPill
+import com.example.ui.components.VerifiedAccountBadge
 
 @Composable
 fun ProfileScreen(
@@ -69,10 +74,12 @@ fun ProfileScreen(
     isDarkTheme: Boolean,
     isActionBusy: Boolean,
     appUpdateInfo: AppUpdateInfo = AppUpdateInfo(),
+    apkDownloadState: ApkDownloadState = ApkDownloadState.Idle,
     onToggleTheme: (Boolean) -> Unit,
     onUpdateProfile: (fullName: String, username: String, phone: String) -> Unit,
     onCheckForUpdates: () -> Unit = {},
     onDownloadApk: (String) -> Unit = {},
+    onOpenDownloads: (String) -> Unit = {},
     onOpenAdmin: () -> Unit,
     onOpenWebsite: () -> Unit = {},
     onOpenSupport: () -> Unit,
@@ -124,7 +131,10 @@ fun ProfileScreen(
                             Text(profile.fullName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                             Text("@${profile.username}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(6.dp))
-                            StatusPill(status = profile.accountStatus, isDarkTheme = isDarkTheme)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                StatusPill(status = profile.accountStatus, isDarkTheme = isDarkTheme)
+                                VerifiedAccountBadge(isVerified = profile.isVerified, isDarkTheme = isDarkTheme)
+                            }
                         }
                     }
                 }
@@ -186,6 +196,13 @@ fun ProfileScreen(
                             ProfileInfoRow("Referred By", profile.referredBy)
                         }
                         ProfileInfoRow("Registered On", FintechFormatters.formatDate(profile.createdAt))
+                        ProfileInfoRow(
+                            "Verification Status",
+                            if (profile.isVerified) "VERIFIED" else profile.firstDepositStatus.uppercase()
+                        )
+                        if (profile.isVerified && profile.verifiedAt != null) {
+                            ProfileInfoRow("Verified Date", FintechFormatters.formatDate(profile.verifiedAt))
+                        }
                         ProfileInfoRow("Account Status", profile.accountStatus.uppercase())
                         ProfileInfoRow("Official Website", AppConstants.OFFICIAL_WEBSITE_DOMAIN)
                     }
@@ -231,6 +248,12 @@ fun ProfileScreen(
                                 "v${appUpdateInfo.latestVersionName}"
                             }
                         )
+                        if (appUpdateInfo.apkFileSizeBytes > 0L) {
+                            ProfileInfoRow("APK File Size", FintechFormatters.formatBytes(appUpdateInfo.apkFileSizeBytes))
+                        }
+                        if (appUpdateInfo.publishedAt.isNotBlank()) {
+                            ProfileInfoRow("Release Date", FintechFormatters.formatIsoDate(appUpdateInfo.publishedAt))
+                        }
                         if (appUpdateInfo.githubRepoSlug.isNotBlank()) {
                             ProfileInfoRow("GitHub Repository", appUpdateInfo.githubRepoSlug)
                         }
@@ -252,13 +275,46 @@ fun ProfileScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                        when (apkDownloadState) {
+                            is ApkDownloadState.Downloading -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    LinearProgressIndicator(
+                                        progress = { (apkDownloadState.progressPercent / 100f).coerceIn(0f, 1f) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(6.dp)
+                                            .clip(RoundedCornerShape(50))
+                                    )
+                                    Text(
+                                        text = "Downloading ${AppConstants.APK_ASSET_NAME}... ${apkDownloadState.progressPercent}%",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            is ApkDownloadState.Completed -> {
+                                Text(
+                                    text = "Downloaded ${apkDownloadState.fileName} ✓ Open Downloads to install.",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            is ApkDownloadState.Error -> {
+                                Text(
+                                    text = apkDownloadState.message,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            ApkDownloadState.Idle -> Unit
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             OutlinedButton(
                                 onClick = onCheckForUpdates,
-                                enabled = !appUpdateInfo.isChecking,
+                                enabled = !appUpdateInfo.isChecking && apkDownloadState !is ApkDownloadState.Downloading,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(48.dp)
@@ -273,16 +329,37 @@ fun ProfileScreen(
                                 Text(if (appUpdateInfo.isChecking) "Checking..." else "Check Updates")
                             }
                             if (appUpdateInfo.downloadUrl.isNotBlank()) {
-                                Button(
-                                    onClick = { onDownloadApk(appUpdateInfo.downloadUrl) },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(48.dp)
-                                        .testTag("profile_download_apk_button")
-                                ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Download APK")
+                                if (apkDownloadState is ApkDownloadState.Completed) {
+                                    Button(
+                                        onClick = { onOpenDownloads(appUpdateInfo.downloadUrl) },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(48.dp)
+                                            .testTag("profile_install_apk_button")
+                                    ) {
+                                        Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Open Downloads")
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = { onDownloadApk(appUpdateInfo.downloadUrl) },
+                                        enabled = apkDownloadState !is ApkDownloadState.Downloading,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(48.dp)
+                                            .testTag("profile_download_apk_button")
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            if (apkDownloadState is ApkDownloadState.Downloading) {
+                                                "${apkDownloadState.progressPercent}%"
+                                            } else {
+                                                "Download APK"
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }

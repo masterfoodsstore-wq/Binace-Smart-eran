@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.example.data.model.AppConstants
 import com.example.data.model.DepositRequest
 import com.example.data.model.PaymentAccountConfig
 import com.example.data.model.TransactionRecord
@@ -279,7 +280,8 @@ class WalletRepository(
         paymentAccountName: String = "",
         paymentAccountNumber: String = "",
         receiptStoragePath: String? = null,
-        receiptUrl: String? = null
+        receiptUrl: String? = null,
+        minDeposit: Double = AppConstants.DEFAULT_MIN_DEPOSIT
     ): Result<String> {
         val uid = try {
             requireUserId()
@@ -291,8 +293,13 @@ class WalletRepository(
         val refKey = normalizeRefKey(cleanRef)
         val cleanAccountName = paymentAccountName.trim().ifBlank { cleanMethod }
         val cleanAccountNumber = paymentAccountNumber.trim().ifBlank { "Configured Account" }
+        val effectiveMinDeposit = maxOf(AppConstants.DEFAULT_MIN_DEPOSIT, minDeposit)
 
-        if (amount < 50.0) return Result.failure(IllegalArgumentException("Minimum deposit is PKR 50."))
+        if (amount < effectiveMinDeposit) {
+            return Result.failure(
+                IllegalArgumentException("Minimum simulated demo deposit is PKR ${effectiveMinDeposit.toInt()}.")
+            )
+        }
         if (cleanMethod.length < 2) return Result.failure(IllegalArgumentException("Select a payment method."))
         if (cleanRef.length < 3 || refKey.length < 3) {
             return Result.failure(IllegalArgumentException("Enter a valid transaction reference ID (min 3 characters)."))
@@ -354,6 +361,16 @@ class WalletRepository(
                     "createdAt" to FieldValue.serverTimestamp()
                 )
             )
+            if (!userProfile.isVerified && userProfile.firstDepositStatus in setOf("none", "rejected", "")) {
+                batch.update(
+                    db.collection("users").document(uid),
+                    mapOf(
+                        "firstDepositStatus" to "pending",
+                        "firstDepositAmount" to amount,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                )
+            }
             batch.commit().await()
             Result.success(finalDepositId)
         } catch (e: CancellationException) {
@@ -361,9 +378,9 @@ class WalletRepository(
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, docRef.path)
             val msg = if (e is FirebaseFirestoreException && e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
-                "Could not submit deposit. Verify transaction reference is unique and account is active."
+                "Could not submit simulated deposit. Verify transaction reference is unique, amount is at least PKR ${effectiveMinDeposit.toInt()}, and account is active."
             } else {
-                e.localizedMessage ?: "Deposit submission failed."
+                e.localizedMessage ?: "Simulated deposit submission failed."
             }
             Result.failure(IllegalStateException(msg, e))
         }
@@ -374,7 +391,8 @@ class WalletRepository(
         amount: Double,
         paymentMethod: String,
         accountReference: String,
-        existingWithdrawals: List<WithdrawalRequest>
+        existingWithdrawals: List<WithdrawalRequest>,
+        minWithdrawal: Double = AppConstants.DEFAULT_MIN_WITHDRAWAL
     ): Result<String> {
         val uid = try {
             requireUserId()
@@ -383,15 +401,25 @@ class WalletRepository(
         }
         val cleanMethod = paymentMethod.trim()
         val cleanAccount = accountReference.trim()
+        val effectiveMinWd = maxOf(AppConstants.DEFAULT_MIN_WITHDRAWAL, minWithdrawal)
 
-        if (amount < 50.0) return Result.failure(IllegalArgumentException("Minimum withdrawal is PKR 50."))
+        if (!userProfile.isVerified) {
+            return Result.failure(
+                IllegalStateException("Account verification is required before submitting a simulated demo withdrawal.")
+            )
+        }
+        if (amount < effectiveMinWd) {
+            return Result.failure(
+                IllegalArgumentException("Minimum simulated demo withdrawal is PKR ${effectiveMinWd.toInt()}.")
+            )
+        }
         if (amount > userProfile.combinedBalance) {
-            return Result.failure(IllegalArgumentException("Insufficient wallet balance."))
+            return Result.failure(IllegalArgumentException("Insufficient simulated wallet balance."))
         }
         if (cleanMethod.length < 2) return Result.failure(IllegalArgumentException("Select a payment method."))
         if (cleanAccount.length < 3) return Result.failure(IllegalArgumentException("Enter a valid account reference."))
         if (existingWithdrawals.any { it.status.equals("pending", ignoreCase = true) }) {
-            return Result.failure(IllegalArgumentException("You already have a pending withdrawal request awaiting admin review."))
+            return Result.failure(IllegalArgumentException("You already have a pending simulated withdrawal request awaiting admin review."))
         }
 
         val withdrawalId = "WDR-${UUID.randomUUID().toString().replace("-", "").take(10).uppercase()}"
