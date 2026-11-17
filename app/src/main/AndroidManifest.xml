@@ -68,6 +68,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
+                    android:scheme="https"
+                    android:host="binacesmarteran.my.canva.site" />
+                <data
+                    android:scheme="https"
+                    android:host="www.binacesmarteran.my.canva.site" />
+                <data
+                    android:scheme="http"
+                    android:host="binacesmarteran.my.canva.site" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
                     android:scheme="binacesmartearn"
                     android:host="signup" />
             </intent-filter>

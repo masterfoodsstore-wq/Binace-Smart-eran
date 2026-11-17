@@ -90,8 +90,8 @@ fun ReferralsScreen(
     onNavigateDeposit: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val referralLink = ReferralLinkHelper.buildReferralLink(profile.referralCode)
-    val shareMessage = ReferralLinkHelper.buildShareMessage(profile.referralCode)
+    val referralLink = ReferralLinkHelper.buildReferralLink(profile.referralCode, profile.uid)
+    val shareMessage = ReferralLinkHelper.buildShareMessage(profile.referralCode, profile.uid)
 
     val totalRegistered = referrals.size
     val eligibleReferrals = referrals.count { it.firstDepositVerified }
@@ -156,7 +156,7 @@ fun ReferralsScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Share your invite link. When a friend signs up via binacesmartearn.online and their qualifying simulated demo deposit is verified, your demo wallet receives a simulated Rs. ${rewardPerReferral.toInt()} reward.",
+                                text = "Share your invite link (${AppConstants.REFERRAL_SITE_DOMAIN}) with your User ID. When a friend signs up with your link and their qualifying simulated demo deposit is verified, your demo wallet receives a simulated Rs. ${rewardPerReferral.toInt()} reward.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color(0xFFBBD0C6)
                             )
@@ -222,7 +222,7 @@ fun ReferralsScreen(
                             }
                         }
 
-                        Text("My Official Referral Link", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("My Referral Link + User ID", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -235,6 +235,14 @@ fun ReferralsScreen(
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
+                                Text(
+                                    text = "User ID: ${profile.uid}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.testTag("referral_user_id_text")
+                                )
                                 Text(
                                     text = referralLink,
                                     style = MaterialTheme.typography.bodyMedium,

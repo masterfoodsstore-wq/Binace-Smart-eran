@@ -23,12 +23,27 @@ class ReferralAndUpdateTest {
 
     @Test
     fun `referral link generation and mobile desktop deep link capture`() {
-        val link = ReferralLinkHelper.buildReferralLink("user123")
-        assertEquals("https://binacesmartearn.online/signup?ref=USER123", link)
+        val linkWithUid = ReferralLinkHelper.buildReferralLink("user123", "uidAbc987654")
+        assertEquals("https://binacesmarteran.my.canva.site/?ref=USER123&uid=uidAbc987654", linkWithUid)
+
+        val linkCodeOnly = ReferralLinkHelper.buildReferralLink("user123")
+        assertEquals("https://binacesmarteran.my.canva.site/?ref=USER123", linkCodeOnly)
 
         assertEquals(
             "USER123",
-            ReferralLinkHelper.extractReferralCode(Uri.parse("https://binacesmartearn.online/signup?ref=user123"))
+            ReferralLinkHelper.extractReferralCode(Uri.parse("https://binacesmarteran.my.canva.site/?ref=user123&uid=uidAbc987654"))
+        )
+        assertEquals(
+            "uidAbc987654",
+            ReferralLinkHelper.extractReferrerUid(Uri.parse("https://binacesmarteran.my.canva.site/?ref=user123&uid=uidAbc987654"))
+        )
+        assertEquals(
+            "USER123",
+            ReferralLinkHelper.extractReferralCodeFromUrl("https://binacesmarteran.my.canva.site/?ref=user123&uid=uidAbc987654")
+        )
+        assertEquals(
+            "uidAbc987654",
+            ReferralLinkHelper.extractReferrerUidFromUrl("https://binacesmarteran.my.canva.site/?ref=user123&uid=uidAbc987654")
         )
         assertEquals(
             "ALICE99",
@@ -46,12 +61,13 @@ class ReferralAndUpdateTest {
             ReferralLinkHelper.extractReferralCode(Uri.parse("https://untrusted-site.example/signup?ref=USER123"))
         )
 
-        val message = ReferralLinkHelper.buildShareMessage("USER123")
-        assertTrue(message.contains("https://binacesmartearn.online/signup?ref=USER123"))
+        val message = ReferralLinkHelper.buildShareMessage("USER123", "uidAbc987654")
+        assertTrue(message.contains("https://binacesmarteran.my.canva.site/?ref=USER123&uid=uidAbc987654"))
+        assertTrue(message.contains("User ID: uidAbc987654"))
         assertTrue(message.contains("simulated", ignoreCase = true))
         assertTrue(ReferralLinkHelper.whatsAppShareUrl(message).startsWith("https://wa.me/?text="))
-        assertTrue(ReferralLinkHelper.telegramShareUrl(link, message).startsWith("https://t.me/share/url?"))
-        assertTrue(ReferralLinkHelper.facebookShareUrl(link, message).startsWith("https://www.facebook.com/sharer/sharer.php?"))
+        assertTrue(ReferralLinkHelper.telegramShareUrl(linkWithUid, message).startsWith("https://t.me/share/url?"))
+        assertTrue(ReferralLinkHelper.facebookShareUrl(linkWithUid, message).startsWith("https://www.facebook.com/sharer/sharer.php?"))
     }
 
     @Test
